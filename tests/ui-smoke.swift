@@ -27,5 +27,17 @@ if(!workflowNavigation(fixture,'tts').includes('aria-current="step"'))throw Erro
 if(!settingsView().includes('Cài đặt'))throw Error('settings');
 if(aiStagesFor(fixture).length!==4)throw Error('source workflow');
 if(aiReady(fixture,'production'))throw Error('image gate');
+const old={id:'keep',chapter:'A',voice:'V',image:'I',video:'C',approvals:{script:true,audio:true,image:true,video:true},assets:{image:[{id:'img',selected:true,path:'/saved.png'}]}};
+const kept=retainStoryboardAssets([old],[{chapter:'A',voice:'V',image:'I',video:'C'}])[0];
+if(kept.id!=='keep'||kept.assets.image[0].path!=='/saved.png'||!kept.approvals.image)throw Error('retain images');
+const changed=retainStoryboardAssets([old],[{chapter:'A',voice:'V',image:'new prompt',video:'C'}])[0];
+if(!changed.assets.image.length||changed.approvals.image)throw Error('prompt edit retains file with review');
+const different=retainStoryboardAssets([old],[{chapter:'B',voice:'new',image:'I',video:'C'}])[0];
+if(different.assets.image)throw Error('do not assign images to unrelated scenes');
+fixture.scenes[0].assets.image=[{id:'img',selected:true,path:'/saved.png'}];
+if(pendingReferences(fixture).length!==1)throw Error('bulk images');
+const reopened=JSON.parse(JSON.stringify(fixture));
+if(reopened.scenes[0].assets.image[0].path!=='/saved.png')throw Error('image persistence');
+if(!referenceAssistantView().includes('Duyệt tất cả ảnh (1)'))throw Error('visible bulk approval');
 """)
 print("UI scripts parse; dashboard, overview, TTS, references, settings, escaping and workflow gate passed")
