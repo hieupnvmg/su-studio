@@ -13,7 +13,7 @@ Build Universal, ZIP OTA và DMG: `sh source/package-dmg.sh`.
 
 Kết nối dịch vụ → Cập nhật Sử Studio → Kiểm tra → Tải → Cài và khởi động lại.
 Repo công khai: không cần đăng nhập GitHub để cập nhật. Token Keychain chỉ dùng nếu sau này chuyển sang repo riêng tư.
-Release ổn định `vX.Y.Z` cần asset `Su-Studio-X.Y.Z-Universal.zip`, có SHA-256 do GitHub cung cấp. App kiểm tra hash, bundle ID, phiên bản và chữ ký trước khi thay app; giữ bản cũ để rollback. Không thay dữ liệu dự án/Keychain.
+Release ổn định `vX.Y.Z` cần asset `Su-Studio-X.Y.Z-Universal.zip`, cùng `latest.json` chứa version, URL tải và SHA-256 (repo riêng tư có thể dùng digest của GitHub API). App kiểm tra hash, bundle ID, phiên bản và chữ ký trước khi thay app; giữ bản cũ để rollback. Không thay dữ liệu dự án/Keychain.
 
 Phát hành: tăng phiên bản trong `source/Info.plist`, build gói, push commit/tag, upload ZIP và DMG lên GitHub Releases. Bản test ký ad-hoc, chưa notarize.
 

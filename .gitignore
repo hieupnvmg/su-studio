@@ -12,3 +12,5 @@ auth.json
 credentials.json
 projects.json
 model-selection.json
+
+latest.json

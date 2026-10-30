@@ -44,9 +44,34 @@ final class AppUpdater: NSObject, URLSessionTaskDelegate {
             DispatchQueue.main.async { session.finishTasksAndInvalidate(); completion(data, status, error) }
         }.resume()
     }
+    private func checkPublicFeed() {
+        let url = URL(string: "https://github.com/\(repository)/releases/latest/download/latest.json")!
+        fetch(url, token: nil, binary: true) { [weak self] data, status, error in
+            guard let self = self else { return }; self.busy = false
+            guard error == nil, status == 200, let data = data, data.count < 100000,
+                  let body = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                  let version = body["version"] as? String else {
+                self.emit("error", "Chưa đọc được nguồn cập nhật công khai (HTTP \(status)). Kiểm tra mạng hoặc thử lại sau."); return
+            }
+            self.version = version
+            guard Self.newer(version, than: self.current) else {
+                self.emit("current", "Bạn đang dùng bản mới nhất (\(self.current))."); return
+            }
+            let expected = "https://github.com/\(self.repository)/releases/download/v\(version)/Su-Studio-\(version)-Universal.zip"
+            guard body["url"] as? String == expected, let url = URL(string: expected),
+                  let hash = body["sha256"] as? String,
+                  hash.range(of: "^[a-fA-F0-9]{64}$", options: .regularExpression) != nil,
+                  let size = body["size"] as? Int, size > 0, size < 512_000_000 else {
+                self.emit("error", "Nguồn cập nhật không có URL hoặc SHA-256 hợp lệ. Không cài."); return
+            }
+            self.assetURL = url; self.digest = hash.lowercased()
+            self.emit("available", "Có bản \(version). Bấm tải để xác minh và chuẩn bị cài.")
+        }
+    }
     func check(token: String?) {
         guard !busy else { return }; busy = true; staged = nil; assetURL = nil
         emit("checking", "Đang kiểm tra GitHub Releases…")
+        if token == nil || token?.isEmpty == true { checkPublicFeed(); return }
         let url = URL(string: "https://api.github.com/repos/\(repository)/releases/latest")!
         fetch(url, token: token) { [weak self] data, status, error in
             guard let self = self else { return }; self.busy = false
