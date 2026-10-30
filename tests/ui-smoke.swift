@@ -3,8 +3,8 @@ import JavaScriptCore
 let c=JSContext()!
 c.exceptionHandler={_,e in fatalError(e!.toString())}
 c.evaluateScript("var window={};var document={addEventListener:function(){}};function setInterval(){};var crypto={randomUUID:function(){return 'test-id'}};")
-for file in ["source/assistant.js", "source/script-import.js", "source/ui.js", "source/updater.js", "source/tts.js", "source/assistant-progress.js", "source/reference-images.js", "source/tts-batch.js", "source/model-picker.js", "source/native-editor.js", "source/narration-player.js"] { c.setObject(try String(contentsOfFile:file,encoding:.utf8),forKeyedSubscript:"source" as NSString);c.evaluateScript("new Function(source)") }
-for name in ["ui.js","assistant.js","script-import.js","reference-images.js","narration-player.js","tts-batch.js","tts.js","assistant-progress.js","model-picker.js","updater.js"] { c.evaluateScript(try String(contentsOfFile:"source/"+name,encoding:.utf8)) }
+for file in ["source/assistant.js", "source/script-import.js", "source/ui.js", "source/updater.js", "source/tts.js", "source/assistant-progress.js", "source/reference-images.js", "source/tts-batch.js", "source/model-picker.js", "source/native-editor.js", "source/narration-player.js", "source/media-studio.js"] { c.setObject(try String(contentsOfFile:file,encoding:.utf8),forKeyedSubscript:"source" as NSString);c.evaluateScript("new Function(source)") }
+for name in ["ui.js","assistant.js","script-import.js","reference-images.js","narration-player.js","tts-batch.js","tts.js","assistant-progress.js","model-picker.js","updater.js","media-studio.js"] { c.evaluateScript(try String(contentsOfFile:"source/"+name,encoding:.utf8)) }
 let html=try String(contentsOfFile:"source/index.html",encoding:.utf8)
 let inline=String(html.components(separatedBy:"<script>")[1].components(separatedBy:"</script>")[0].components(separatedBy:"render();if(native)")[0])
 c.evaluateScript(inline)
@@ -54,5 +54,28 @@ fixture.scenes[0].plenxImageJob={status:'queued',prompt:'old prompt',model:'test
 plenxImagePending={requestId:'image-2',kind:'status',projectId:'p',sceneId:'s',sourcePrompt:'old prompt'};
 window.nativePlenxImage({requestId:'image-2',status:'completed',taskId:'task-2',path:'/old.png',name:'old.png'});
 if(fixture.scenes[0].assets.image.at(-1).selected)throw Error('stale prompt result not selected');
+confirm=function(){return true};let sent=[];send=function(action,body){sent.push({action,body})};
+const batchFixture={id:'batch',title:'Batch',plenxImageModel:'img-model',scenes:[{id:'a',voice:'one',image:'prompt one',video:'move one',chapter:'One',time:'00:00–00:02',approvals:{script:true},assets:{}},{id:'b',voice:'two',image:'prompt two',video:'move two',chapter:'Two',time:'00:02–00:04',approvals:{script:true},assets:{}},{id:'c',voice:'three',image:'existing',video:'move three',chapter:'Three',time:'00:04–00:06',approvals:{script:true,image:true},assets:{image:[{id:'existing',selected:true,path:'/existing.png'}]}}]};
+state.projects=[batchFixture];selected='batch';plenxImageModels=[{id:'img-model',name:'Image',resolutions:['1k']}];
+startImageBatch();if(sent.length!==1||sent[0].body.sceneId!=='a'||batchFixture.imageBatch.total!==2)throw Error('sequential missing-image queue');
+window.nativePlenxImage({requestId:'wrong',status:'completed',path:'/wrong.png'});
+if(batchFixture.imageBatch.completed!==0)throw Error('stale callback queue');
+window.nativePlenxImage({requestId:plenxImagePending.requestId,status:'completed',path:'/a.png',name:'a.png'});
+if(batchFixture.imageBatch.completed!==1||sent.length!==2||sent[1].body.sceneId!=='b')throw Error('next image');
+stopImageBatch();window.nativePlenxImage({requestId:plenxImagePending.requestId,status:'completed',path:'/b.png',name:'b.png'});
+if(batchFixture.imageBatch.status!=='paused'||sent.length!==2||!batchFixture.scenes[2].assets.image[0].selected)throw Error('stop retains results and existing image');
+batchFixture.scenes.forEach(s=>s.approvals.image=true);
+plenxVideoModels=[{id:'vid-model',name:'Video',modes:['i2v'],aspect_ratios:['16:9'],endpoints:['/developer/generate/video'],durations:[2],qualities:['720p']}];
+batchFixture.videoSettings={model:'vid-model',duration:2,quality:'720p'};sent=[];
+startVideoBatch();if(sent.length!==1||sent[0].action!=='plenxVideo'||sent[0].body.imagePath!=='/a.png')throw Error('video queue reference image');
+window.nativePlenxImage({requestId:plenxImagePending.requestId,status:'error',message:'fixture failure'});
+if(batchFixture.videoBatch.status!=='paused'||sent.length!==1)throw Error('paid video not retried');
+batchFixture.scenes[0].assets.video=[{id:'clip',selected:true,path:'/clip.mp4',duration:2}];
+let edits=timelineEntries(batchFixture);edits[0].trimStart=.2;edits[0].trimEnd=1.8;
+if(resolvedTimeline(batchFixture)[0].path!=='/clip.mp4')throw Error('timeline resolves scene clip');
+moveTimeline(edits[0].id,1);if(timelineEntries(batchFixture)[1].sceneId!=='a')throw Error('timeline reorder');
+const saved=JSON.parse(JSON.stringify(batchFixture));
+if(saved.timelineEntries[1].trimStart!==.2||saved.timelineEntries[1].trimEnd!==1.8)throw Error('timeline edit persistence');
+if(!productionView().includes('Xuất MP4'))throw Error('production editor');
 """)
 print("UI scripts parse; dashboard, overview, TTS, references, settings, escaping and workflow gate passed")

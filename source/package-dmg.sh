@@ -14,7 +14,7 @@ cp "$STUDIO_SOURCE"/*.js "$STUDIO_SOURCE/index.html" "$STUDIO_SOURCE/demo.json" 
 cp -R "$STUDIO_SOURCE/assets" "$STUDIO_APP/Contents/Resources/"
 cp "$STUDIO_SOURCE/assets/AppIcon.icns" "$STUDIO_APP/Contents/Resources/AppIcon.icns"
 for STUDIO_ARCH in arm64 x86_64; do
-    swiftc -target "$STUDIO_ARCH-apple-macos13.0" "$STUDIO_SOURCE"/*.swift -o "$STUDIO_TEMP/HistoryStudio-$STUDIO_ARCH" -framework Cocoa -framework WebKit -framework Security -framework AVFoundation
+    swiftc -target "$STUDIO_ARCH-apple-macos13.0" "$STUDIO_SOURCE"/*.swift -o "$STUDIO_TEMP/HistoryStudio-$STUDIO_ARCH" -framework Cocoa -framework WebKit -framework Security -framework AVFoundation -framework AVKit
 done
 xcrun lipo -create "$STUDIO_TEMP/HistoryStudio-arm64" "$STUDIO_TEMP/HistoryStudio-x86_64" -output "$STUDIO_APP/Contents/MacOS/HistoryStudio"
 codesign --force --sign - "$STUDIO_APP"

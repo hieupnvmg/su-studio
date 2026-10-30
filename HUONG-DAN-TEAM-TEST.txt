@@ -1,4 +1,4 @@
-SỬ STUDIO — BẢN TEAM TEST 0.4.2
+SỬ STUDIO — BẢN TEAM TEST 0.5.0
 
 Yêu cầu: macOS 13 trở lên, Mac Apple Silicon hoặc Intel.
 Đây là bản thử nghiệm ký ad-hoc, chưa có Developer ID / notarization của Apple.
@@ -31,9 +31,14 @@ PHẠM VI TEST
 - Tạo video từ ý tưởng hoặc dán kịch bản có sẵn.
 - AI chia cảnh, tạo prompt ảnh/video; người dùng duyệt storyboard.
 - Tạo audio ElevenLabs từng cảnh hoặc hàng loạt, nghe nối tiếp và duyệt hàng loạt.
-- Ảnh tham chiếu: copy prompt, tạo bên ngoài, nhập ảnh, chọn phiên bản và duyệt.
-- Tạo ảnh/clip video tự động chưa tích hợp; xuất gói để dựng thủ công trong CapCut.
-- Tạo TTS dùng credit ElevenLabs của tài khoản tester; không tạo nếu chỉ mở app.
+- Ảnh tham chiếu: tạo bằng PlenX từng cảnh hoặc toàn bộ ảnh còn thiếu; có thể nhập ảnh thủ công. Xem thumbnail, ảnh lớn và duyệt tất cả ở cuối danh sách.
+- Tạo clip PlenX từ ảnh tham chiếu đã duyệt: chọn model, thời lượng, chất lượng rồi tạo từng clip hoặc tất cả clip còn thiếu.
+- Hàng đợi chạy lần lượt, bỏ qua tài nguyên đã có, dừng khi lỗi; có thể dừng sau mục hiện tại. Mở lại app cần kiểm tra tác vụ đang chạy trước khi tạo mới.
+- Video & timeline: kéo đổi thứ tự, nhập video riêng thay cảnh hoặc chèn sau đoạn đang chọn; cắt đầu/cuối, bật/tắt tiếng gốc và lời kể.
+- Bấm Căn theo giọng đọc để dùng thời lượng audio thực tế. Hình được đổi tốc độ để khớp thời lượng timeline; lời kể giữ nguyên tốc độ. App chặn xuất nếu đoạn ngắn hơn lời kể.
+- Xem thử bằng trình phát trong app; xuất MP4 1080p, 16:9, 30 fps khi các đoạn đã có video. Có thể xuất gói tài nguyên để chỉnh thêm trong CapCut.
+- Timeline hiện hỗ trợ dựng nối tiếp và lời kể; chưa có effect, chữ, transition hay trộn nhạc nhiều lớp như CapCut.
+- Tạo TTS dùng credit ElevenLabs; tạo ảnh/video dùng credit PlenX. App xác nhận trước khi tạo, không tự tạo chỉ vì mở dự án.
 
 GỬI PHẢN HỒI
 Ghi model máy, phiên bản macOS, bước thực hiện, kết quả mong muốn/thực tế và ảnh lỗi.
@@ -42,4 +47,4 @@ Không gửi API key hoặc token trong phản hồi.
 Bản Universal đã build cho hai kiến trúc; Mac Intel chưa được chạy thử trên phần cứng Intel.
 
 CẬP NHẬT OTA
-Cài bản 0.4.2 này một lần để có updater. Từ bản sau, mở Kết nối dịch vụ → Cập nhật Sử Studio. Repo công khai hieupnvmg/su-studio: team kiểm tra và tải cập nhật không cần đăng nhập GitHub hay nhập token. Bản mới được tải, kiểm tra SHA-256/bundle ID/phiên bản/chữ ký rồi cài sau khi bạn xác nhận. Nếu đang chạy AI/TTS, đợi hoàn tất trước.
+Cài bản 0.5.0 này một lần để có updater. Từ bản sau, mở Cài đặt & kết nối → Cập nhật Sử Studio. Repo công khai hieupnvmg/su-studio: team kiểm tra và tải cập nhật không cần đăng nhập GitHub hay nhập token. Bản mới được tải, kiểm tra SHA-256/bundle ID/phiên bản/chữ ký rồi cài sau khi bạn xác nhận. Nếu đang tạo tài nguyên hoặc xuất video, đợi hoàn tất trước.

@@ -103,7 +103,7 @@ final class PlenXImages: NSObject, URLSessionTaskDelegate {
             }
             if kind == "models" {
                 let models = (json["image_models"] as? [[String:Any]] ?? []).filter { ($0["aspect_ratios"] as? [String] ?? []).contains("16:9") }
-                reply(["status":"models","models":models]); return
+                reply(["status":"models","models":models,"videoModels":json["video_models"] ?? []]); return
             }
             let task = json["task_id"] as? String ?? body["taskId"] as? String ?? ""
             let state = json["status"] as? String ?? "queued"

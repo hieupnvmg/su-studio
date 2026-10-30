@@ -2,6 +2,7 @@ import Cocoa
 import WebKit
 import Security
 import ImageIO
+import AVFoundation
 
 final class StudioImageScheme: NSObject, WKURLSchemeHandler {
     let root: URL
@@ -30,6 +31,8 @@ final class Studio: NSObject, NSApplicationDelegate, WKScriptMessageHandler, WKU
     lazy var codex = CodexConnection(root: root)
     let plenxProbe = PlenXProbe()
     lazy var plenxImages = PlenXImages(root: root)
+    lazy var plenxVideo = PlenXVideo(root: root)
+    lazy var timeline = StudioTimeline(root: root)
     let elevenProbe = ElevenLabsProbe()
     lazy var tts = ElevenLabsTTS(root: root)
     lazy var narration = NarrationPlayer(root: root)
@@ -49,6 +52,8 @@ final class Studio: NSObject, NSApplicationDelegate, WKScriptMessageHandler, WKU
         updater.onUpdate = { [weak self] update in self?.reply(update, "nativeUpdate") }
         narration.onUpdate = { [weak self] update in self?.reply(update, "nativeNarration") }
         tts.onUpdate = { [weak self] update in self?.reply(update, "nativeTTS") }
+        timeline.onUpdate = { [weak self] update in self?.reply(update, "nativeTimeline") }
+        plenxVideo.onUpdate = { [weak self] update in self?.reply(update, "nativePlenxImage") }
         plenxImages.onUpdate = { [weak self] update in self?.reply(update, "nativePlenxImage") }
         plenxProbe.onUpdate = { [weak self] update in self?.reply(update, "nativePlenxTest") }
         elevenProbe.onUpdate = { [weak self] update in self?.reply(update, "nativeElevenTest") }
@@ -86,9 +91,9 @@ final class Studio: NSObject, NSApplicationDelegate, WKScriptMessageHandler, WKU
         NSApp.activate(ignoringOtherApps: true)
     }
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
-        guard tts.busy else { return .terminateNow }
-        let alert = NSAlert(); alert.messageText = "ElevenLabs đang tạo hoặc tải dữ liệu"
-        alert.informativeText = "Đợi hoàn tất để audio được lưu trên máy. Đóng ngay có thể mất kết quả nhưng vẫn dùng credit."
+        guard tts.busy || plenxVideo.busy || timeline.busy else { return .terminateNow }
+        let alert = NSAlert(); alert.messageText = "Đang tạo tài nguyên hoặc xuất video"
+        alert.informativeText = "Đợi hoàn tất để tài nguyên được lưu trên máy. Đóng ngay có thể mất kết quả nhưng vẫn dùng credit."
         alert.addButton(withTitle: "Tiếp tục đợi"); alert.addButton(withTitle: "Đóng app")
         return alert.runModal() == .alertFirstButtonReturn ? .terminateCancel : .terminateNow
     }
@@ -173,7 +178,7 @@ final class Studio: NSObject, NSApplicationDelegate, WKScriptMessageHandler, WKU
                 if action == "updateCheck" { self.updater.check(token: token) } else { self.updater.download(token: token) }
             }
         case "updateInstall":
-            guard !tts.busy, !codex.isGenerating else {
+            guard !tts.busy, !codex.isGenerating, !timeline.busy, !plenxVideo.busy else {
                 reply(["status": "ready", "message": "Đợi AI/TTS hoàn tất trước khi cài cập nhật."], "nativeUpdate"); return
             }
             let alert = NSAlert(); alert.messageText = "Cài cập nhật và khởi động lại Sử Studio?"
@@ -204,6 +209,21 @@ final class Studio: NSObject, NSApplicationDelegate, WKScriptMessageHandler, WKU
             if let raw = body["url"] as? String, let url = URL(string: raw), ["https", "http"].contains(url.scheme?.lowercased() ?? "") { NSWorkspace.shared.open(url) }
         case "assistantGenerate": codex.generateAssistant(body)
         case "assistantCancel": codex.interruptAssistant()
+        case "timeline": timeline.command(body)
+        case "timelineImport":
+            let panel = NSOpenPanel(); panel.allowsMultipleSelection=false;panel.allowedFileTypes=["mp4","mov","m4v"]
+            guard panel.runModal() == .OK,let file=panel.url else { return }
+            let source=AVURLAsset(url:file)
+            guard !source.tracks(withMediaType:.video).isEmpty,source.duration.seconds.isFinite,source.duration.seconds>0 else { reply(["error":"File không có video đọc được."]);return }
+            do { let folder=root.appendingPathComponent("assets",isDirectory:true);try FileManager.default.createDirectory(at:folder,withIntermediateDirectories:true);let dest=folder.appendingPathComponent(UUID().uuidString+"-"+file.lastPathComponent);try FileManager.default.copyItem(at:file,to:dest);reply(["projectId":body["projectId"] as? String ?? "","path":dest.path,"name":file.lastPathComponent,"duration":source.duration.seconds],"nativeTimelineImported") } catch { reply(["error":"Không nhập được video vào dự án."]) }
+        case "plenxVideo":
+            credentials.read("plenx") { [weak self] result in
+                guard let self=self else { return }
+                switch result {
+                case .success(let key):self.plenxVideo.request(body,key:key)
+                case .failure:self.reply(["requestId":body["requestId"] as? String ?? "","status":"error","message":"Lưu API key PlenX trước."],"nativePlenxImage")
+                }
+            }
         case "plenxImage":
             if body["kind"] as? String == "models" { plenxImages.request(body, key: ""); return }
             credentials.read("plenx") { [weak self] result in
@@ -266,10 +286,16 @@ final class Studio: NSObject, NSApplicationDelegate, WKScriptMessageHandler, WKU
                 if request["kind"] as? String == "image", NSImage(contentsOf: file) == nil {
                     reply(["error": "File đã chọn không phải ảnh đọc được. Hãy chọn PNG, JPEG, WebP hoặc HEIC hợp lệ."]); return
                 }
+                if request["kind"] as? String == "video" {
+                    let video = AVURLAsset(url:file)
+                    guard !video.tracks(withMediaType:.video).isEmpty,video.duration.seconds.isFinite,video.duration.seconds>0 else { reply(["error":"File không phải video đọc được."]);return }
+                }
                 let folder = root.appendingPathComponent("assets", isDirectory: true); try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
                 let dest = folder.appendingPathComponent(UUID().uuidString + "-" + file.lastPathComponent)
                 try FileManager.default.copyItem(at: file, to: dest)
-                reply(["request": request, "path": dest.path, "name": file.lastPathComponent], "nativeAsset")
+                var result: [String:Any] = ["request":request,"path":dest.path,"name":file.lastPathComponent]
+                if request["kind"] as? String == "video" { let asset=AVURLAsset(url:dest);if asset.duration.seconds.isFinite { result["duration"]=asset.duration.seconds } }
+                reply(result, "nativeAsset")
             } catch { reply(["error": "Không nhập được tài nguyên: \(error.localizedDescription)"]) }
         case "openAsset":
             if let path = body["path"] as? String, path.hasPrefix(root.appendingPathComponent("assets").path + "/") { NSWorkspace.shared.open(URL(fileURLWithPath: path)) }
