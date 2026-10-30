@@ -31,6 +31,8 @@ final class Studio: NSObject, NSApplicationDelegate, WKScriptMessageHandler, WKU
         web.uiDelegate = self
         window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 1360, height: 860), styleMask: [.titled, .closable, .miniaturizable, .resizable], backing: .buffered, defer: false)
         window.title = "Sử Studio"
+        window.titlebarAppearsTransparent = true
+        window.backgroundColor = .windowBackgroundColor
         window.minSize = NSSize(width: 1040, height: 680)
         window.contentView = web
         window.center()
