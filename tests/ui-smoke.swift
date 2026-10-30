@@ -77,5 +77,8 @@ moveTimeline(edits[0].id,1);if(timelineEntries(batchFixture)[1].sceneId!=='a')th
 const saved=JSON.parse(JSON.stringify(batchFixture));
 if(saved.timelineEntries[1].trimStart!==.2||saved.timelineEntries[1].trimEnd!==1.8)throw Error('timeline edit persistence');
 if(!productionView().includes('Xuất MP4'))throw Error('production editor');
+batchFixture.imageBatch={status:'running',completed:1,total:2,message:'Đang tạo cảnh 2'};
+if(!productionView().includes('Dừng tạo ảnh sau ảnh hiện tại')||!productionView().includes('Đang tạo ảnh · 1/2'))throw Error('visible image queue on video page');
+if(!productionView().includes('disabled onclick=\"startVideoBatch()\"'))throw Error('video disabled during image queue');
 """)
 print("UI scripts parse; dashboard, overview, TTS, references, settings, escaping and workflow gate passed")
