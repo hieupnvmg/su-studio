@@ -96,6 +96,19 @@ final class StudioTimeline: NSObject, NSWindowDelegate {
         let kind = body["command"] as? String ?? "preview"
         if kind == "cancel" { exporter?.cancelExport(); return }
         guard !busy else { onUpdate?(["status":"error","message":"Đang xuất MP4. Đợi hoàn tất hoặc hủy xuất trước."]);return }
+        if kind == "previewSource" {
+            do {
+                let source = try asset(body["path"] as? String)
+                guard !source.tracks(withMediaType:.video).isEmpty else { throw issue("Clip chưa có video đọc được.") }
+                player?.pause();preview?.close()
+                let player = AVPlayer(playerItem:AVPlayerItem(asset:source));self.player=player
+                let view=AVPlayerView(frame:NSRect(x:0,y:0,width:1000,height:600));view.player=player;view.controlsStyle = .floating
+                let window=NSWindow(contentRect:view.frame,styleMask:[.titled,.closable,.resizable,.miniaturizable],backing:.buffered,defer:false)
+                window.delegate=self;window.title="Xem clip gốc";window.contentView=view;window.isReleasedWhenClosed=false;window.center();window.makeKeyAndOrderFront(nil);preview=window;player.play()
+                onUpdate?(["status":"preview","message":"Đang xem clip gốc, giữ nguyên tốc độ và âm thanh nguồn."])
+            } catch { onUpdate?(["status":"error","message":error.localizedDescription]) }
+            return
+        }
         guard let entries = body["entries"] as? [[String:Any]], !entries.isEmpty,entries.count<=500 else { onUpdate?(["status":"error","message":"Timeline chưa có clip."]);return }
         if kind == "measure" {
             var values:[[String:Any]]=[]
