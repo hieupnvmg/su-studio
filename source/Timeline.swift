@@ -168,7 +168,18 @@ final class StudioTimeline: NSObject, NSWindowDelegate {
             let start=e["trimStart"] as? Double ?? 0,end=e["trimEnd"] as? Double ?? source.duration.seconds
             let target=e["duration"] as? Double ?? end-start
             guard start.isFinite,end.isFinite,target.isFinite,start>=0,end>start,end<=source.duration.seconds+0.05,target>=0.1,target<=3600 else { throw issue("Clip \(index+1): điểm cắt hoặc thời lượng chưa hợp lệ (file dài \(String(format:"%.2f",source.duration.seconds)) giây).") }
-            let range=CMTimeRange(start:seconds(start),duration:seconds(min(end,source.duration.seconds)-start)),slot=seconds(target)
+            // Container audio can end after the last video frame. Never stretch an empty video tail.
+            let requested=CMTimeRange(start:seconds(start),duration:seconds(min(end,source.duration.seconds)-start))
+            let range=CMTimeRangeGetIntersection(requested,otherRange:src.timeRange)
+            let voiceLength: Double
+            if let path=e["audioPath"] as? String,!path.isEmpty {
+                voiceLength=try asset(path).duration.seconds
+                guard voiceLength.isFinite,voiceLength>0,voiceLength<=target+0.1 else { throw issue("Clip \(index+1) ngắn hơn lời kể. Bấm Căn theo giọng đọc hoặc tăng thời lượng timeline.") }
+            } else { voiceLength=0 }
+            // Round UP to an output frame. Truncating the video time left the last
+            // milliseconds of MP3 outside the instructions, invalidating the composition.
+            let slot=CMTime(value:Int64(ceil(max(target,voiceLength)*30)),timescale:30)
+            guard range.isValid,range.duration.seconds>0 else { throw issue("Đoạn cắt không còn khung hình video.") }
             guard let track=composition.addMutableTrack(withMediaType:.video,preferredTrackID:kCMPersistentTrackID_Invalid) else { throw issue("Không thêm được track video.") }
             try track.insertTimeRange(range,of:src,at:cursor);track.scaleTimeRange(CMTimeRange(start:cursor,duration:range.duration),toDuration:slot)
             let transformed=src.naturalSize.applying(src.preferredTransform),size=CGSize(width:abs(transformed.width),height:abs(transformed.height))
@@ -194,6 +205,7 @@ final class StudioTimeline: NSObject, NSWindowDelegate {
             cursor=CMTimeAdd(cursor,slot)
         }
         video.renderSize=CGSize(width:1920,height:1080);video.frameDuration=CMTime(value:1,timescale:30);video.instructions=instructions;mix.inputParameters=audioParameters
+        guard video.isValid(for:composition,timeRange:CMTimeRange(start:.zero,duration:composition.duration),validationDelegate:nil) else { throw issue("Chưa căn được khung hình với lời kể. Hãy căn lại thời lượng trước khi xem thử.") }
         return(composition,video,mix,cursor.seconds)
     }
 }

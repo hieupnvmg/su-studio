@@ -35,6 +35,11 @@ let entries:[[String:Any]]=[
  ["id":"two","path":folder.appendingPathComponent("blue.mp4").path,"trimStart":0.0,"duration":2.0,"audioPath":voice]]
 let (composition,video,mix,duration)=try timeline.compose(entries)
 assert(abs(duration-4)<0.05);assert(video.renderSize==CGSize(width:1920,height:1080));assert(mix.inputParameters.count==2)
+var fractional=[entries[0]]
+fractional[0]["duration"]=AVURLAsset(url:URL(fileURLWithPath:voice)).duration.seconds
+let (fractionalComposition,fractionalVideo,_,_)=try timeline.compose(fractional)
+assert(fractionalVideo.isValid(for:fractionalComposition,timeRange:CMTimeRange(start:.zero,duration:fractionalComposition.duration),validationDelegate:nil))
+assert(fractionalComposition.duration.seconds>=AVURLAsset(url:URL(fileURLWithPath:voice)).duration.seconds)
 let output=testRoot.appendingPathComponent("render.mp4");try? FileManager.default.removeItem(at:output)
 let exporter=AVAssetExportSession(asset:composition,presetName:AVAssetExportPreset1920x1080)!
 exporter.outputURL=output;exporter.outputFileType = .mp4;exporter.videoComposition=video;exporter.audioMix=mix
