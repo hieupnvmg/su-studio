@@ -1,4 +1,4 @@
-SỬ STUDIO — BẢN TEAM TEST 0.4.0
+SỬ STUDIO — BẢN TEAM TEST 0.4.1
 
 Yêu cầu: macOS 13 trở lên, Mac Apple Silicon hoặc Intel.
 Đây là bản thử nghiệm ký ad-hoc, chưa có Developer ID / notarization của Apple.
@@ -42,4 +42,4 @@ Không gửi API key hoặc token trong phản hồi.
 Bản Universal đã build cho hai kiến trúc; Mac Intel chưa được chạy thử trên phần cứng Intel.
 
 CẬP NHẬT OTA
-Cài bản 0.4.0 này một lần để có updater. Từ bản sau, mở Kết nối dịch vụ → Cập nhật Sử Studio. Repo công khai hieupnvmg/su-studio: team kiểm tra và tải cập nhật không cần đăng nhập GitHub hay nhập token. Bản mới được tải, kiểm tra SHA-256/bundle ID/phiên bản/chữ ký rồi cài sau khi bạn xác nhận. Nếu đang chạy AI/TTS, đợi hoàn tất trước.
+Cài bản 0.4.1 này một lần để có updater. Từ bản sau, mở Kết nối dịch vụ → Cập nhật Sử Studio. Repo công khai hieupnvmg/su-studio: team kiểm tra và tải cập nhật không cần đăng nhập GitHub hay nhập token. Bản mới được tải, kiểm tra SHA-256/bundle ID/phiên bản/chữ ký rồi cài sau khi bạn xác nhận. Nếu đang chạy AI/TTS, đợi hoàn tất trước.

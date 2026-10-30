@@ -1,6 +1,28 @@
 import Cocoa
 import WebKit
 import Security
+import ImageIO
+
+final class StudioImageScheme: NSObject, WKURLSchemeHandler {
+    let root: URL
+    init(root: URL) { self.root = root.appendingPathComponent("assets", isDirectory: true).standardizedFileURL.resolvingSymlinksInPath() }
+    func webView(_ webView: WKWebView, start task: WKURLSchemeTask) {
+        guard let url = task.request.url, url.host == "asset" else { task.didFailWithError(URLError(.badURL)); return }
+        let name = url.lastPathComponent
+        let file = root.appendingPathComponent(name).standardizedFileURL.resolvingSymlinksInPath()
+        guard !name.isEmpty, file.deletingLastPathComponent() == root,
+              let source = CGImageSourceCreateWithURL(file as CFURL, nil) else { task.didFailWithError(URLError(.fileDoesNotExist)); return }
+        let full = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems?.contains { $0.name == "full" && $0.value == "1" } == true
+        let options: [CFString: Any] = [kCGImageSourceCreateThumbnailFromImageAlways: true, kCGImageSourceThumbnailMaxPixelSize: full ? 2400 : 640, kCGImageSourceCreateThumbnailWithTransform: true]
+        guard let image = CGImageSourceCreateThumbnailAtIndex(source, 0, options as CFDictionary) else { task.didFailWithError(URLError(.cannotDecodeContentData)); return }
+        let data = NSMutableData()
+        guard let destination = CGImageDestinationCreateWithData(data, "public.png" as CFString, 1, nil) else { task.didFailWithError(URLError(.cannotDecodeContentData)); return }
+        CGImageDestinationAddImage(destination, image, nil)
+        guard CGImageDestinationFinalize(destination) else { task.didFailWithError(URLError(.cannotDecodeContentData)); return }
+        task.didReceive(URLResponse(url: url, mimeType: "image/png", expectedContentLength: data.length, textEncodingName: nil)); task.didReceive(data as Data); task.didFinish()
+    }
+    func webView(_ webView: WKWebView, stop task: WKURLSchemeTask) {}
+}
 
 final class Studio: NSObject, NSApplicationDelegate, WKScriptMessageHandler, WKUIDelegate {
     var window: NSWindow!
@@ -20,6 +42,7 @@ final class Studio: NSObject, NSApplicationDelegate, WKScriptMessageHandler, WKU
         try? FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
         let config = WKWebViewConfiguration()
         config.userContentController.add(self, name: "native")
+        config.setURLSchemeHandler(StudioImageScheme(root: root), forURLScheme: "studio-image")
         codex.onUpdate = { [weak self] update in self?.reply(update, "nativeCodex") }
         codex.onAssistant = { [weak self] update in self?.reply(update, "nativeAssistant") }
         codex.onModels = { [weak self] update in self?.reply(update, "nativeModels") }
