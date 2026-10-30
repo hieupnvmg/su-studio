@@ -1,0 +1,14 @@
+.DS_Store
+.build/
+*.app/
+*.dmg
+*.zip
+*.sha256
+DMG-verification.json
+preview*.png
+*.log
+.env*
+auth.json
+credentials.json
+projects.json
+model-selection.json

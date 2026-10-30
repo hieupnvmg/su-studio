@@ -1,0 +1,45 @@
+SỬ STUDIO — BẢN TEAM TEST 0.2.0
+
+Yêu cầu: macOS 13 trở lên, Mac Apple Silicon hoặc Intel.
+Đây là bản thử nghiệm ký ad-hoc, chưa có Developer ID / notarization của Apple.
+
+CÀI ĐẶT
+1. Mở DMG, kéo HistoryStudio.app vào Applications.
+2. Đóng/eject DMG rồi mở app từ Applications.
+3. Nếu macOS chặn vì nhà phát triển chưa được xác minh: sau lần mở đầu,
+   vào System Settings → Privacy & Security → Open Anyway (Mở vẫn tiếp tục).
+   Chỉ thực hiện với bản bạn nhận trực tiếp từ người phụ trách test.
+
+MỖI MÁY DÙNG CẤU HÌNH RIÊNG
+- Gói cài không chứa dự án cá nhân, API key hay phiên đăng nhập của người gửi.
+- Lần đầu có một storyboard mẫu Trần Thánh Tông để thử giao diện.
+- Mỗi tester tự đăng nhập ChatGPT/Codex và nhập API key dịch vụ của mình.
+- Dữ liệu dự án nằm trong ~/Library/Application Support/HistoryStudio.
+- API key lưu trong macOS Keychain; Codex lưu phiên đăng nhập riêng trên máy.
+
+PHỤ THUỘC CHO TRỢ LÝ AI
+App cần tìm được executable Codex được cài riêng ở một trong các vị trí:
+/Applications/ChatGPT.app/Contents/Resources/codex-cli/CodexCLI.app/Contents/MacOS/codex
+/Applications/Codex.app/Contents/Resources/codex
+/opt/homebrew/bin/codex
+/usr/local/bin/codex
+Nếu chưa có Codex, vẫn có thể kiểm tra giao diện và dữ liệu mẫu.
+Khả năng chạy thành phần Codex còn phụ thuộc phiên bản/hệ điều hành của thành phần đó.
+Nhập storyboard Excel cần Python 3 tại /usr/bin/python3 (Apple Command Line Tools).
+
+PHẠM VI TEST
+- Tạo video từ ý tưởng hoặc dán kịch bản có sẵn.
+- AI chia cảnh, tạo prompt ảnh/video; người dùng duyệt storyboard.
+- Tạo audio ElevenLabs từng cảnh hoặc hàng loạt, nghe nối tiếp và duyệt hàng loạt.
+- Ảnh tham chiếu: copy prompt, tạo bên ngoài, nhập ảnh, chọn phiên bản và duyệt.
+- Tạo ảnh/clip video tự động chưa tích hợp; xuất gói để dựng thủ công trong CapCut.
+- Tạo TTS dùng credit ElevenLabs của tài khoản tester; không tạo nếu chỉ mở app.
+
+GỬI PHẢN HỒI
+Ghi model máy, phiên bản macOS, bước thực hiện, kết quả mong muốn/thực tế và ảnh lỗi.
+Không gửi API key hoặc token trong phản hồi.
+
+Bản Universal đã build cho hai kiến trúc; Mac Intel chưa được chạy thử trên phần cứng Intel.
+
+CẬP NHẬT OTA
+Cài bản 0.2.0 này một lần để có updater. Từ bản sau, mở Kết nối dịch vụ → Cập nhật Sử Studio. Repo công khai hieupnvmg/su-studio: team kiểm tra và tải cập nhật không cần đăng nhập GitHub hay nhập token. Bản mới được tải, kiểm tra SHA-256/bundle ID/phiên bản/chữ ký rồi cài sau khi bạn xác nhận. Nếu đang chạy AI/TTS, đợi hoàn tất trước.
