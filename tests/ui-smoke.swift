@@ -39,6 +39,8 @@ if(pendingReferences(fixture).length!==1)throw Error('bulk images');
 const reopened=JSON.parse(JSON.stringify(fixture));
 if(reopened.scenes[0].assets.image[0].path!=='/saved.png')throw Error('image persistence');
 if(!referenceAssistantView().includes('Duyệt tất cả ảnh (1)'))throw Error('visible bulk approval');
+if(referenceAssistantView().indexOf('Duyệt tất cả ảnh (1)')<referenceAssistantView().indexOf('reference-scene-s'))throw Error('image approval below scenes');
+if(ttsAssistantView().indexOf('Duyệt tất cả (')<ttsAssistantView().indexOf('tts-scene-s'))throw Error('audio approval below scenes');
 if(!referenceAssistantView().includes('Tạo ảnh bằng PlenX'))throw Error('PlenX controls');
 let saves=0;save=function(){saves++};render=function(){};toast=function(){};
 fixture.scenes[0].plenxImageJob={status:'queued',prompt:fixture.scenes[0].image,model:'test-model',taskId:'task-1'};
