@@ -39,5 +39,18 @@ if(pendingReferences(fixture).length!==1)throw Error('bulk images');
 const reopened=JSON.parse(JSON.stringify(fixture));
 if(reopened.scenes[0].assets.image[0].path!=='/saved.png')throw Error('image persistence');
 if(!referenceAssistantView().includes('Duyệt tất cả ảnh (1)'))throw Error('visible bulk approval');
+if(!referenceAssistantView().includes('Tạo ảnh bằng PlenX'))throw Error('PlenX controls');
+let saves=0;save=function(){saves++};render=function(){};toast=function(){};
+fixture.scenes[0].plenxImageJob={status:'queued',prompt:fixture.scenes[0].image,model:'test-model',taskId:'task-1'};
+plenxImagePending={requestId:'image-1',kind:'status',projectId:'p',sceneId:'s',sourcePrompt:fixture.scenes[0].image};
+window.nativePlenxImage({requestId:'image-1',status:'completed',taskId:'task-1',path:'/generated.png',name:'generated.png'});
+if(fixture.scenes[0].assets.image.filter(a=>a.selected).length!==1||fixture.scenes[0].assets.image.at(-1).path!=='/generated.png'||fixture.scenes[0].approvals.image||!saves)throw Error('generated image saved and awaits review');
+const versions=fixture.scenes[0].assets.image.length;
+window.nativePlenxImage({requestId:'image-1',status:'completed',path:'/duplicate.png'});
+if(fixture.scenes[0].assets.image.length!==versions)throw Error('duplicate completion');
+fixture.scenes[0].plenxImageJob={status:'queued',prompt:'old prompt',model:'test-model',taskId:'task-2'};
+plenxImagePending={requestId:'image-2',kind:'status',projectId:'p',sceneId:'s',sourcePrompt:'old prompt'};
+window.nativePlenxImage({requestId:'image-2',status:'completed',taskId:'task-2',path:'/old.png',name:'old.png'});
+if(fixture.scenes[0].assets.image.at(-1).selected)throw Error('stale prompt result not selected');
 """)
 print("UI scripts parse; dashboard, overview, TTS, references, settings, escaping and workflow gate passed")

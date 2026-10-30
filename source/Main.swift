@@ -7,6 +7,7 @@ final class Studio: NSObject, NSApplicationDelegate, WKScriptMessageHandler, WKU
     var web: WKWebView!
     lazy var codex = CodexConnection(root: root)
     let plenxProbe = PlenXProbe()
+    lazy var plenxImages = PlenXImages(root: root)
     let elevenProbe = ElevenLabsProbe()
     lazy var tts = ElevenLabsTTS(root: root)
     lazy var narration = NarrationPlayer(root: root)
@@ -25,6 +26,7 @@ final class Studio: NSObject, NSApplicationDelegate, WKScriptMessageHandler, WKU
         updater.onUpdate = { [weak self] update in self?.reply(update, "nativeUpdate") }
         narration.onUpdate = { [weak self] update in self?.reply(update, "nativeNarration") }
         tts.onUpdate = { [weak self] update in self?.reply(update, "nativeTTS") }
+        plenxImages.onUpdate = { [weak self] update in self?.reply(update, "nativePlenxImage") }
         plenxProbe.onUpdate = { [weak self] update in self?.reply(update, "nativePlenxTest") }
         elevenProbe.onUpdate = { [weak self] update in self?.reply(update, "nativeElevenTest") }
         web = WKWebView(frame: .zero, configuration: config)
@@ -179,6 +181,15 @@ final class Studio: NSObject, NSApplicationDelegate, WKScriptMessageHandler, WKU
             if let raw = body["url"] as? String, let url = URL(string: raw), ["https", "http"].contains(url.scheme?.lowercased() ?? "") { NSWorkspace.shared.open(url) }
         case "assistantGenerate": codex.generateAssistant(body)
         case "assistantCancel": codex.interruptAssistant()
+        case "plenxImage":
+            if body["kind"] as? String == "models" { plenxImages.request(body, key: ""); return }
+            credentials.read("plenx") { [weak self] result in
+                guard let self = self else { return }
+                switch result {
+                case .success(let key): self.plenxImages.request(body, key: key)
+                case .failure: self.reply(["requestId":body["requestId"] as? String ?? "", "status":"error","message":"Chưa đọc được API key PlenX. Lưu key trong Cài đặt & kết nối trước."], "nativePlenxImage")
+                }
+            }
         case "plenxTest", "elevenTest":
             let provider = action == "plenxTest" ? "plenx" : "elevenlabs"
             let name = provider == "plenx" ? "PlenX" : "ElevenLabs"
