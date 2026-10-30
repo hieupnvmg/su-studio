@@ -20,6 +20,14 @@ func makeVideo(_ name:String,_ width:Int,_ height:Int,_ color:NSColor) throws {
  input.markAsFinished();let sem=DispatchSemaphore(value:0);writer.finishWriting {sem.signal()};sem.wait();assert(writer.status == .completed)
 }
 try makeVideo("red.mp4",640,360,.red);try makeVideo("blue.mp4",360,640,.blue)
+let temporary=folder.appendingPathComponent("download.tmp")
+try FileManager.default.copyItem(at:folder.appendingPathComponent("red.mp4"),to:temporary)
+let saved=try PlenXVideo.storeDownloadedVideo(temporary,in:folder)
+assert(saved.url.pathExtension=="mp4" && abs(saved.duration-2)<0.05)
+let invalidDownload=folder.appendingPathComponent("invalid.tmp");try Data("not a video".utf8).write(to:invalidDownload)
+let before=try FileManager.default.contentsOfDirectory(atPath:folder.path).count
+do { _=try PlenXVideo.storeDownloadedVideo(invalidDownload,in:folder);fatalError("invalid download accepted") } catch {}
+let after=try FileManager.default.contentsOfDirectory(atPath:folder.path).count;assert(after==before)
 let timeline=StudioTimeline(root:testRoot)
 let voice=folder.appendingPathComponent("voice.wav").path
 let entries:[[String:Any]]=[

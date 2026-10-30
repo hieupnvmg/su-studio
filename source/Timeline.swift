@@ -37,9 +37,10 @@ final class PlenXVideo: NSObject, URLSessionTaskDelegate {
                 guard let raw = json["result_url"] as? String,let url = URL(string:raw),url.scheme == "https",url.user == nil,url.password == nil else { reply(["status":"error","taskId":task,"message":"Chưa có URL video hợp lệ."]); return }
                 self.session.downloadTask(with:url) { file,response,error in
                     guard error == nil,let file = file,let http = response as? HTTPURLResponse,(200..<300).contains(http.statusCode),let size = try? file.resourceValues(forKeys:[.fileSizeKey]).fileSize,size <= 1_000_000_000 else { reply(["status":"error","taskId":task,"message":"Video đã tạo nhưng tải chưa thành công. Kiểm tra lại tác vụ để tải, không cần tạo mới."]); return }
-                    let asset = AVURLAsset(url:file)
-                    guard !asset.tracks(withMediaType:.video).isEmpty,asset.duration.seconds.isFinite,asset.duration.seconds>0 else { reply(["status":"error","taskId":task,"message":"File tải về không phải video đọc được."]); return }
-                    do { try FileManager.default.createDirectory(at:self.root,withIntermediateDirectories:true);let dest = self.root.appendingPathComponent(UUID().uuidString+"-plenx.mp4");try FileManager.default.copyItem(at:file,to:dest);reply(["status":"completed","taskId":task,"path":dest.path,"name":dest.lastPathComponent,"duration":asset.duration.seconds]) } catch { reply(["status":"error","taskId":task,"message":"Chưa lưu được video. Kiểm tra dung lượng rồi tải lại tác vụ."]) }
+                    do {
+                        let saved = try Self.storeDownloadedVideo(file, in:self.root)
+                        reply(["status":"completed","taskId":task,"path":saved.url.path,"name":saved.url.lastPathComponent,"duration":saved.duration])
+                    } catch { reply(["status":"error","taskId":task,"message":error.localizedDescription]) }
                 }.resume()
             };return
         }
@@ -57,6 +58,18 @@ final class PlenXVideo: NSObject, URLSessionTaskDelegate {
                 guard let task = json?["task_id"] as? String,!task.isEmpty else { reply(["status":"error","message":"Chưa xác nhận được yêu cầu tạo video (HTTP \(code)). Kiểm tra lịch sử PlenX trước khi tạo lại; có thể đã dùng credit."]);return };reply(["status":"queued","taskId":task,"message":"PlenX đã nhận yêu cầu tạo video…"])
             }
         }
+    }
+    static func storeDownloadedVideo(_ temporary: URL, in folder: URL) throws -> (url:URL,duration:Double) {
+        try FileManager.default.createDirectory(at:folder,withIntermediateDirectories:true)
+        // AVFoundation cannot identify a URLSession .tmp file as MP4 on macOS.
+        let destination=folder.appendingPathComponent(UUID().uuidString+"-plenx.mp4")
+        try FileManager.default.copyItem(at:temporary,to:destination)
+        let asset=AVURLAsset(url:destination)
+        guard !asset.tracks(withMediaType:.video).isEmpty,asset.duration.seconds.isFinite,asset.duration.seconds>0 else {
+            try? FileManager.default.removeItem(at:destination)
+            throw NSError(domain:"PlenXVideo",code:1,userInfo:[NSLocalizedDescriptionKey:"File tải về chưa phải video đọc được. Bấm kiểm tra tác vụ để tải lại; không cần tạo lượt mới."])
+        }
+        return(destination,asset.duration.seconds)
     }
     func urlSession(_ session:URLSession,task:URLSessionTask,willPerformHTTPRedirection response:HTTPURLResponse,newRequest request:URLRequest,completionHandler:@escaping(URLRequest?)->Void) { completionHandler(nil) }
 }
