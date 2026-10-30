@@ -1,5 +1,5 @@
 let narrationState={status:'idle'};
-function narrationClips(p){return p.scenes.flatMap((s,i)=>{const a=s.assets?.audio?.find(a=>a.selected&&(a.text===undefined||a.text===s.voice));return a?[{path:a.path,title:'Cảnh '+(i+1)+' · '+(s.chapter||s.time||''),sceneId:s.id}]:[]})}
+function narrationClips(p){return p.scenes.flatMap((s,i)=>{const a=s.assets?.audio?.find(a=>a.selected&&ttsAssetCurrent(s,a));return a?[{path:a.path,title:'Cảnh '+(i+1)+' · '+(s.chapter||s.time||''),sceneId:s.id}]:[]})}
 function startNarration(){const p=project(),clips=narrationClips(p);if(!clips.length)return toast('Chưa có audio được chọn để nghe.');send('narration',{command:'start',projectId:p.id,clips})}
 function narrationCommand(command,extra={}){send('narration',{command,...extra})}
 function audioClock(value){const n=Math.max(0,Math.floor(Number(value)||0));return Math.floor(n/60)+':'+String(n%60).padStart(2,'0')}

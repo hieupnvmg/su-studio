@@ -73,7 +73,11 @@ final class ElevenLabsTTS: NSObject, URLSessionTaskDelegate {
             guard Self.supportsFileSpeech(model) else {
                 fail("Model \(model) dành cho luồng hội thoại/realtime. Hãy tải lại danh sách và chọn model tạo file giọng đọc như Eleven v3 hoặc Flash v2.5 nếu tài khoản hỗ trợ."); return
             }
-            payload = Self.speechPayload(text: text, model: model, previous: body["previousText"] as? String, next: body["nextText"] as? String)
+            let direction = (body["direction"] as? String ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+            guard direction.isEmpty || ["eleven_v3", "eleven_v4"].contains(model) else { fail("Cảm xúc cần model Eleven v3 hoặc v4."); return }
+            let speechText = direction.isEmpty ? text : direction + "\n" + text
+            guard speechText.count <= 5000 else { fail("Lời đọc và chỉ dẫn vượt 5.000 ký tự."); return }
+            payload = Self.speechPayload(text: speechText, model: model, previous: body["previousText"] as? String, next: body["nextText"] as? String)
         } else { fail("Yêu cầu ElevenLabs không hợp lệ."); return }
         var request = URLRequest(url: URL(string: "https://api.elevenlabs.io" + path)!)
         request.httpMethod = payload == nil ? "GET" : "POST"

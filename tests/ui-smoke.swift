@@ -13,6 +13,14 @@ const fixture={id:'p',title:'Test <script>',scenes:[{id:'s',time:'00:00–00:20'
 state.projects=[fixture];selected='p';page='assistant';aiViewedStage='tts';
 if(!studioDashboard().includes('Test &lt;script&gt;'))throw Error('dashboard escaping');
 if(!projectOverview().includes('Quy trình của dự án'))throw Error('overview');
+fixture.scenes[0].ttsDirection='[angry]';
+if(sceneHasCurrentAudio(fixture.scenes[0]))throw Error('old emotion must be stale');
+if(bulkAudioCandidates(fixture).length)throw Error('stale emotion bulk approval');
+if(narrationClips(fixture).length)throw Error('stale emotion player');
+fixture.scenes[0].assets.audio[0].direction='[angry]';
+if(!sceneHasCurrentAudio(fixture.scenes[0]))throw Error('matching emotion');
+if(!ttsSupportsDirection('eleven_v3')||ttsSupportsDirection('eleven_multilingual_v2'))throw Error('emotion model gate');
+if(!ttsAssistantView().includes('Cảm xúc & cách đọc'))throw Error('emotion UI');
 if(!ttsAssistantView().includes('media-scene'))throw Error('audio view');
 if(!referenceAssistantView().includes('Chuẩn bị ảnh'))throw Error('image view');
 if(!workflowNavigation(fixture,'tts').includes('aria-current="step"'))throw Error('navigation');
