@@ -77,6 +77,8 @@ moveTimeline(edits[0].id,1);if(timelineEntries(batchFixture)[1].sceneId!=='a')th
 const saved=JSON.parse(JSON.stringify(batchFixture));
 if(saved.timelineEntries[1].trimStart!==.2||saved.timelineEntries[1].trimEnd!==1.8)throw Error('timeline edit persistence');
 if(!productionView().includes('Xuất MP4'))throw Error('production editor');
+plenxVideoModels.push({id:'kling-4.0',name:'Kling 4.0',modes:['i2v'],aspect_ratios:['16:9'],endpoints:['/developer/generate/video-omni'],qualities:['1080p'],durations:[5]});
+if(!videoCatalog().some(m=>m.id==='kling-4.0')||videoEndpoint(plenxVideoModels[1])!=='/developer/generate/video-omni')throw Error('Omni model catalog');
 plenxVideoModels[0].qualities=['720p','1080p','4K'];
 if(!productionView().includes('1080p')||!productionView().includes('4K'))throw Error('source quality options');
 if(!productionView().includes('▶ Xem clip'))throw Error('source clip preview button');

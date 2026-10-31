@@ -54,7 +54,15 @@ final class PlenXVideo: NSObject, URLSessionTaskDelegate {
         api("/media-upload/direct",key:key,payload:["image_data":"data:image/png;base64,"+(png as Data).base64EncodedString(),"filename":"reference.png","media_type":"image","aspect_ratio":"16:9"]) { uploaded,code in
             guard let uploaded = uploaded,let imageURL = (uploaded["url"] ?? uploaded["public_url"]) as? String else { reply(["status":"error","message":"Chưa tải được ảnh tham chiếu lên PlenX (HTTP \(code)). Chưa xác nhận tạo video."]);return }
             let duration = body["duration"] as? Int ?? 5,quality = body["quality"] as? String ?? "720p"
-            self.api("/generate/video",key:key,payload:["model":model,"prompt":prompt,"mode":"i2v","start_image_url":imageURL,"duration":duration,"quality":quality,"aspect_ratio":"16:9"]) { json,code in
+            let endpoint = body["endpoint"] as? String ?? "/developer/generate/video"
+            guard ["/developer/generate/video","/developer/generate/video-omni"].contains(endpoint) else { reply(["status":"error","message":"Model chưa có đường API video phù hợp."]); return }
+            var payload: [String:Any] = ["model":model,"prompt":prompt,"duration":duration,"aspect_ratio":"16:9"]
+            if endpoint.hasSuffix("video-omni") {
+                payload["input_image_url"]=imageURL;payload["resolution"]=quality.lowercased()
+            } else {
+                payload["mode"]="i2v";payload["start_image_url"]=imageURL;payload["quality"]=quality.lowercased()
+            }
+            self.api(endpoint.replacingOccurrences(of:"/developer",with:""),key:key,payload:payload) { json,code in
                 guard let task = json?["task_id"] as? String,!task.isEmpty else { reply(["status":"error","message":"Chưa xác nhận được yêu cầu tạo video (HTTP \(code)). Kiểm tra lịch sử PlenX trước khi tạo lại; có thể đã dùng credit."]);return };reply(["status":"queued","taskId":task,"message":"PlenX đã nhận yêu cầu tạo video…"])
             }
         }
