@@ -3,8 +3,8 @@ import JavaScriptCore
 let c=JSContext()!
 c.exceptionHandler={_,e in fatalError(e!.toString())}
 c.evaluateScript("var window={};var document={addEventListener:function(){}};function setInterval(){};var crypto={randomUUID:function(){return 'test-id'}};")
-for file in ["source/assistant.js", "source/script-import.js", "source/ui.js", "source/updater.js", "source/tts.js", "source/assistant-progress.js", "source/reference-images.js", "source/tts-batch.js", "source/model-picker.js", "source/native-editor.js", "source/narration-player.js", "source/media-studio.js"] { c.setObject(try String(contentsOfFile:file,encoding:.utf8),forKeyedSubscript:"source" as NSString);c.evaluateScript("new Function(source)") }
-for name in ["ui.js","assistant.js","script-import.js","reference-images.js","narration-player.js","tts-batch.js","tts.js","assistant-progress.js","model-picker.js","updater.js","media-studio.js"] { c.evaluateScript(try String(contentsOfFile:"source/"+name,encoding:.utf8)) }
+for file in ["source/assistant.js", "source/script-import.js", "source/ui.js", "source/updater.js", "source/tts.js", "source/assistant-progress.js", "source/reference-images.js", "source/tts-batch.js", "source/model-picker.js", "source/native-editor.js", "source/narration-player.js", "source/media-studio.js", "source/auto-tags.js"] { c.setObject(try String(contentsOfFile:file,encoding:.utf8),forKeyedSubscript:"source" as NSString);c.evaluateScript("new Function(source)") }
+for name in ["ui.js","assistant.js","script-import.js","reference-images.js","narration-player.js","tts-batch.js","tts.js","assistant-progress.js","model-picker.js","updater.js","media-studio.js","auto-tags.js"] { c.evaluateScript(try String(contentsOfFile:"source/"+name,encoding:.utf8)) }
 let html=try String(contentsOfFile:"source/index.html",encoding:.utf8)
 let inline=String(html.components(separatedBy:"<script>")[1].components(separatedBy:"</script>")[0].components(separatedBy:"render();if(native)")[0])
 c.evaluateScript(inline)
@@ -86,5 +86,19 @@ sent=[];previewSourceClip('a','clip');if(sent[0]?.body.command!=='previewSource'
 batchFixture.imageBatch={status:'running',completed:1,total:2,message:'Đang tạo cảnh 2'};
 if(!productionView().includes('Dừng tạo ảnh sau ảnh hiện tại')||!productionView().includes('Đang tạo ảnh · 1/2'))throw Error('visible image queue on video page');
 if(!productionView().includes('disabled onclick=\"startVideoBatch()\"'))throw Error('video disabled during image queue');
+""")
+c.evaluateScript("""
+if(audioTagIssue('Ông im lặng, nhưng không khuất phục.','[calm] Ông im lặng, [angry] nhưng không khuất phục.'))throw Error('multiple inline tags');
+if(!audioTagIssue('Ông im lặng.','[calm] Ông bỏ đi.'))throw Error('reject rewritten narration');
+if(!audioTagIssue('Ông im lặng.','[explosion] Ông im lặng.'))throw Error('reject unsupported tags');
+const taggedScene={id:'tag-scene',voice:'Ông im lặng, nhưng không khuất phục.',approvals:{script:true,audio:true},assets:{audio:[{selected:true,path:'/old.mp3',text:'Ông im lặng, nhưng không khuất phục.'}]}};
+const tagProject={id:'tag-project',title:'Test',scenes:[taggedScene],guide:{steps:{},brief:{}}};state.projects=[tagProject];selected=tagProject.id;
+tagProject.audioTagJob={requestId:'tag-request',status:'running',sceneIds:[taggedScene.id],sources:[taggedScene.voice]};
+window.nativeAssistant({projectId:tagProject.id,requestId:'tag-request',stage:'audio_tags',status:'completed',result:{scenes:[{chapter:taggedScene.id,voice:'[calm] Ông im lặng, [angry] nhưng không khuất phục.'}]}});
+if(ttsScript(taggedScene)!==taggedScene.voice||!taggedScene.audioTagDraft)throw Error('suggestion does not auto apply');
+applyAudioTags(taggedScene.id);
+if(taggedScene.approvals.audio||!ttsScript(taggedScene).includes('[angry]')||ttsAssetCurrent(taggedScene,taggedScene.assets.audio[0]))throw Error('applied tags invalidate old audio');
+const persisted=JSON.parse(JSON.stringify(taggedScene));if(ttsScript(persisted)!==ttsScript(taggedScene))throw Error('persist tags');
+taggedScene.voice='Lời mới.';if(ttsScript(taggedScene)!=='Lời mới.')throw Error('do not use old tags after text edit');
 """)
 print("UI scripts parse; dashboard, overview, TTS, references, settings, escaping and workflow gate passed")

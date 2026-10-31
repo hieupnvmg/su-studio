@@ -75,7 +75,9 @@ final class ElevenLabsTTS: NSObject, URLSessionTaskDelegate {
             }
             let direction = (body["direction"] as? String ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
             guard direction.isEmpty || ["eleven_v3", "eleven_v4"].contains(model) else { fail("Cảm xúc cần model Eleven v3 hoặc v4."); return }
-            let speechText = direction.isEmpty ? text : direction + "\n" + text
+            let taggedText = body["taggedText"] as? String ?? text
+            guard taggedText == text || ["eleven_v3", "eleven_v4"].contains(model) else { fail("Audio tags cần Eleven v3 hoặc v4."); return }
+            let speechText = direction.isEmpty ? taggedText : direction + "\n" + taggedText
             guard speechText.count <= 5000 else { fail("Lời đọc và chỉ dẫn vượt 5.000 ký tự."); return }
             payload = Self.speechPayload(text: speechText, model: model, previous: body["previousText"] as? String, next: body["nextText"] as? String)
         } else { fail("Yêu cầu ElevenLabs không hợp lệ."); return }

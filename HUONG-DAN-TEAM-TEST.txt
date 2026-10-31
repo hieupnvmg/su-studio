@@ -1,4 +1,4 @@
-SỬ STUDIO — BẢN TEAM TEST 0.5.6
+SỬ STUDIO — BẢN TEAM TEST 0.6.0
 
 Yêu cầu: macOS 13 trở lên, Mac Apple Silicon hoặc Intel.
 Đây là bản thử nghiệm ký ad-hoc, chưa có Developer ID / notarization của Apple.
@@ -31,6 +31,7 @@ PHẠM VI TEST
 - Tạo video từ ý tưởng hoặc dán kịch bản có sẵn.
 - AI chia cảnh, tạo prompt ảnh/video; người dùng duyệt storyboard.
 - Tạo audio ElevenLabs từng cảnh hoặc hàng loạt, nghe nối tiếp và duyệt hàng loạt.
+- Auto-tag: ChatGPT đề xuất tag theo ngữ cảnh, một câu có thể có nhiều tag. Xem/sửa bản nháp rồi áp dụng từng cảnh hoặc tất cả. Lời gốc giữ riêng; app chặn gợi ý thay đổi câu chữ. Chọn Eleven v3/v4 rồi tạo lại audio để nghe. Đây không phải API Enhance của ElevenLabs.
 - Ảnh tham chiếu: tạo bằng PlenX từng cảnh hoặc toàn bộ ảnh còn thiếu; có thể nhập ảnh thủ công. Xem thumbnail, ảnh lớn và duyệt tất cả ở cuối danh sách.
 - Tạo clip PlenX từ ảnh tham chiếu đã duyệt: chọn model, thời lượng, chất lượng rồi tạo từng clip hoặc tất cả clip còn thiếu.
 - Hàng đợi chạy lần lượt, bỏ qua tài nguyên đã có, dừng khi lỗi; có thể dừng sau mục hiện tại. Mở lại app cần kiểm tra tác vụ đang chạy trước khi tạo mới.
@@ -47,4 +48,4 @@ Không gửi API key hoặc token trong phản hồi.
 Bản Universal đã build cho hai kiến trúc; Mac Intel chưa được chạy thử trên phần cứng Intel.
 
 CẬP NHẬT OTA
-Cài bản 0.5.6 này một lần để có updater. Từ bản sau, mở Cài đặt & kết nối → Cập nhật Sử Studio. Repo công khai hieupnvmg/su-studio: team kiểm tra và tải cập nhật không cần đăng nhập GitHub hay nhập token. Bản mới được tải, kiểm tra SHA-256/bundle ID/phiên bản/chữ ký rồi cài sau khi bạn xác nhận. Nếu đang tạo tài nguyên hoặc xuất video, đợi hoàn tất trước.
+Cài bản 0.6.0 này một lần để có updater. Từ bản sau, mở Cài đặt & kết nối → Cập nhật Sử Studio. Repo công khai hieupnvmg/su-studio: team kiểm tra và tải cập nhật không cần đăng nhập GitHub hay nhập token. Bản mới được tải, kiểm tra SHA-256/bundle ID/phiên bản/chữ ký rồi cài sau khi bạn xác nhận. Nếu đang tạo tài nguyên hoặc xuất video, đợi hoàn tất trước.
