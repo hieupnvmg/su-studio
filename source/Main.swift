@@ -229,7 +229,7 @@ final class Studio: NSObject, NSApplicationDelegate, WKScriptMessageHandler, WKU
             credentials.read("plenx") { [weak self] result in
                 guard let self = self else { return }
                 switch result {
-                case .success(let key): self.plenxImages.request(body, key: key)
+                case .success(let key): self.plenxImages.requestWithReferences(body, key: key)
                 case .failure: self.reply(["requestId":body["requestId"] as? String ?? "", "status":"error","message":"Chưa đọc được API key PlenX. Lưu key trong Cài đặt & kết nối trước."], "nativePlenxImage")
                 }
             }

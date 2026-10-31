@@ -13,6 +13,7 @@ trap 'rm -rf "$STUDIO_TEMP"' EXIT HUP INT TERM
 STUDIO_BUILD="$STUDIO_TEMP/HistoryStudio.app"
 mkdir -p "$STUDIO_BUILD/Contents/MacOS" "$STUDIO_BUILD/Contents/Resources"
 swiftc -target "$(uname -m)-apple-macos13.0" "$STUDIO_SOURCE/Main.swift" "$STUDIO_SOURCE/CredentialStore.swift" "$STUDIO_SOURCE/CodexConnection.swift" "$STUDIO_SOURCE/AssistantPlan.swift" "$STUDIO_SOURCE/AssistantProgress.swift" "$STUDIO_SOURCE/PlenXProbe.swift" "$STUDIO_SOURCE/ElevenLabsProbe.swift" "$STUDIO_SOURCE/ElevenLabsTTS.swift" "$STUDIO_SOURCE/NarrationPlayer.swift" "$STUDIO_SOURCE/AppUpdater.swift" "$STUDIO_SOURCE/Timeline.swift" -o "$STUDIO_BUILD/Contents/MacOS/HistoryStudio" -framework Cocoa -framework WebKit -framework Security -framework AVFoundation -framework AVKit
+cp "$STUDIO_SOURCE/visual-bible.js" "$STUDIO_BUILD/Contents/Resources/"
 cp "$STUDIO_SOURCE/auto-tags.js" "$STUDIO_BUILD/Contents/Resources/"
 cp "$STUDIO_SOURCE/media-studio.js" "$STUDIO_BUILD/Contents/Resources/"
 cp "$STUDIO_SOURCE/Info.plist" "$STUDIO_BUILD/Contents/Info.plist"

@@ -3,8 +3,8 @@ import JavaScriptCore
 let c=JSContext()!
 c.exceptionHandler={_,e in fatalError(e!.toString())}
 c.evaluateScript("var window={};var document={addEventListener:function(){}};function setInterval(){};var crypto={randomUUID:function(){return 'test-id'}};")
-for file in ["source/assistant.js", "source/script-import.js", "source/ui.js", "source/updater.js", "source/tts.js", "source/assistant-progress.js", "source/reference-images.js", "source/tts-batch.js", "source/model-picker.js", "source/native-editor.js", "source/narration-player.js", "source/media-studio.js", "source/auto-tags.js"] { c.setObject(try String(contentsOfFile:file,encoding:.utf8),forKeyedSubscript:"source" as NSString);c.evaluateScript("new Function(source)") }
-for name in ["ui.js","assistant.js","script-import.js","reference-images.js","narration-player.js","tts-batch.js","tts.js","assistant-progress.js","model-picker.js","updater.js","media-studio.js","auto-tags.js"] { c.evaluateScript(try String(contentsOfFile:"source/"+name,encoding:.utf8)) }
+for file in ["source/assistant.js", "source/script-import.js", "source/ui.js", "source/updater.js", "source/tts.js", "source/assistant-progress.js", "source/reference-images.js", "source/tts-batch.js", "source/model-picker.js", "source/native-editor.js", "source/narration-player.js", "source/media-studio.js", "source/auto-tags.js", "source/visual-bible.js"] { c.setObject(try String(contentsOfFile:file,encoding:.utf8),forKeyedSubscript:"source" as NSString);c.evaluateScript("new Function(source)") }
+for name in ["ui.js","assistant.js","script-import.js","reference-images.js","narration-player.js","tts-batch.js","tts.js","assistant-progress.js","model-picker.js","updater.js","media-studio.js","auto-tags.js","visual-bible.js"] { c.evaluateScript(try String(contentsOfFile:"source/"+name,encoding:.utf8)) }
 let html=try String(contentsOfFile:"source/index.html",encoding:.utf8)
 let inline=String(html.components(separatedBy:"<script>")[1].components(separatedBy:"</script>")[0].components(separatedBy:"render();if(native)")[0])
 c.evaluateScript(inline)
@@ -25,7 +25,7 @@ if(!ttsAssistantView().includes('media-scene'))throw Error('audio view');
 if(!referenceAssistantView().includes('Chuẩn bị ảnh'))throw Error('image view');
 if(!workflowNavigation(fixture,'tts').includes('aria-current="step"'))throw Error('navigation');
 if(!settingsView().includes('Cài đặt'))throw Error('settings');
-if(aiStagesFor(fixture).length!==4)throw Error('source workflow');
+if(aiStagesFor(fixture).length!==5)throw Error('source workflow');
 if(aiReady(fixture,'production'))throw Error('image gate');
 const old={id:'keep',chapter:'A',voice:'V',image:'I',video:'C',approvals:{script:true,audio:true,image:true,video:true},assets:{image:[{id:'img',selected:true,path:'/saved.png'}]}};
 const kept=retainStoryboardAssets([old],[{chapter:'A',voice:'V',image:'I',video:'C'}])[0];
@@ -56,7 +56,7 @@ window.nativePlenxImage({requestId:'image-2',status:'completed',taskId:'task-2',
 if(fixture.scenes[0].assets.image.at(-1).selected)throw Error('stale prompt result not selected');
 confirm=function(){return true};let sent=[];send=function(action,body){sent.push({action,body})};
 const batchFixture={id:'batch',title:'Batch',plenxImageModel:'img-model',scenes:[{id:'a',voice:'one',image:'prompt one',video:'move one',chapter:'One',time:'00:00–00:02',approvals:{script:true},assets:{}},{id:'b',voice:'two',image:'prompt two',video:'move two',chapter:'Two',time:'00:02–00:04',approvals:{script:true},assets:{}},{id:'c',voice:'three',image:'existing',video:'move three',chapter:'Three',time:'00:04–00:06',approvals:{script:true,image:true},assets:{image:[{id:'existing',selected:true,path:'/existing.png'}]}}]};
-state.projects=[batchFixture];selected='batch';plenxImageModels=[{id:'img-model',name:'Image',resolutions:['1k']}];
+state.projects=[batchFixture];selected='batch';batchFixture.visualBible={style:'Test style',characters:[],approved:true,noCharacters:true};batchFixture.scenes[2].assets.image[0].reviewedDesignSignature=designSignature(batchFixture,batchFixture.scenes[2]);plenxImageModels=[{id:'img-model',name:'Image',resolutions:['1k']}];
 startImageBatch();if(sent.length!==1||sent[0].body.sceneId!=='a'||batchFixture.imageBatch.total!==2)throw Error('sequential missing-image queue');
 window.nativePlenxImage({requestId:'wrong',status:'completed',path:'/wrong.png'});
 if(batchFixture.imageBatch.completed!==0)throw Error('stale callback queue');
@@ -100,5 +100,33 @@ applyAudioTags(taggedScene.id);
 if(taggedScene.approvals.audio||!ttsScript(taggedScene).includes('[angry]')||ttsAssetCurrent(taggedScene,taggedScene.assets.audio[0]))throw Error('applied tags invalidate old audio');
 const persisted=JSON.parse(JSON.stringify(taggedScene));if(ttsScript(persisted)!==ttsScript(taggedScene))throw Error('persist tags');
 taggedScene.voice='Lời mới.';if(ttsScript(taggedScene)!=='Lời mới.')throw Error('do not use old tags after text edit');
+""")
+c.evaluateScript("""
+const bible={style:'Muted cinematic',approved:true,noCharacters:false,characters:[{id:'hero',name:'Mai Thúc Loan',description:'Áo vải nâu, tóc buộc',approved:true,images:[{id:'portrait',path:'/hero.png',selected:true}]}]};
+const sceneDesign={id:'scene-design',voice:'Lời kể',image:'Một người bên sông',characterIds:['hero'],designAssigned:true,approvals:{image:true,video:true},assets:{image:[{id:'old-image',path:'/old.png',selected:true}]}};
+const visualProject={id:'visual',visualBible:bible,scenes:[sceneDesign]};
+if(!isDesignApproved(visualProject)||designIssue(visualProject,sceneDesign,{max_references:4}))throw Error('valid visual bible');
+if(characterReferencePaths(visualProject,sceneDesign)[0]!=='/hero.png')throw Error('actual reference path');
+if(!sceneDesignPrompt(visualProject,sceneDesign).includes('Mai Thúc Loan'))throw Error('identity prompt');
+if(!designIssue(visualProject,sceneDesign,{max_references:0}))throw Error('unsupported reference model blocked');
+if(currentSceneImage(visualProject,sceneDesign))throw Error('legacy image needs visual review');
+sceneDesign.assets.image[0].designSignature=designSignature(visualProject,sceneDesign);
+if(!currentSceneImage(visualProject,sceneDesign))throw Error('matching visual image');
+bible.characters[0].images[0].id='new-portrait';
+if(currentSceneImage(visualProject,sceneDesign))throw Error('changed identity invalidates match');
+const persistedDesign=JSON.parse(JSON.stringify(visualProject));
+if(characterReferencePaths(persistedDesign,persistedDesign.scenes[0])[0]!=='/hero.png')throw Error('portrait persistence');
+sceneDesign.characterIds=[];
+if(characterReferencePaths(visualProject,sceneDesign).length)throw Error('landscape has no character images');
+sceneDesign.characterIds=['hero'];visualProject.plenxImageModel='identity-model';state.projects=[visualProject];selected=visualProject.id;plenxImageModels=[{id:'identity-model',name:'Identity',max_references:4,resolutions:['1k']}];sent=[];plenxImagePending=null;
+generatePlenxImage(sceneDesign.id);
+if(sent[0]?.body.referencePaths?.[0]!=='/hero.png'||!sent[0]?.body.prompt.includes('Mai Thúc Loan'))throw Error('identity image request includes actual reference');
+window.nativePlenxImage({requestId:plenxImagePending.requestId,status:'completed',path:'/consistent.png',name:'consistent.png'});
+if(!currentSceneImage(visualProject,sceneDesign))throw Error('generated image identity snapshot');
+sent=[];generateCharacterImage('hero');
+if(sent[0]?.body.characterId!=='hero')throw Error('character generation request');
+window.nativePlenxImage({requestId:plenxImagePending.requestId,status:'completed',path:'/new-portrait.png',name:'new-portrait.png'});
+if(selectedCharacterImage(bible.characters[0]).path!=='/new-portrait.png'||bible.approved||bible.characters[0].approved)throw Error('portrait awaits approval');
+if(currentSceneImage({...visualProject,visualBible:{...bible,approved:true}},sceneDesign))throw Error('new portrait marks old scene image stale');
 """)
 print("UI scripts parse; dashboard, overview, TTS, references, settings, escaping and workflow gate passed")

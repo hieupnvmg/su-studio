@@ -1,5 +1,6 @@
 import Foundation
 import AppKit
+import ImageIO
 
 /// Checks an authenticated, read-only endpoint. Never submits generation jobs.
 final class PlenXProbe: NSObject, URLSessionTaskDelegate {
@@ -67,13 +68,47 @@ final class PlenXImages: NSObject, URLSessionTaskDelegate {
     let root: URL
     var onUpdate: (([String: Any]) -> Void)?
     private var active = false
+    private var referenceURLCache: [String:String] = [:]
+    private let configuration: URLSessionConfiguration
     private lazy var session: URLSession = {
-        let config = URLSessionConfiguration.ephemeral
+        let config = configuration
         config.timeoutIntervalForRequest = 60; config.timeoutIntervalForResource = 120
         config.httpShouldSetCookies = false; config.urlCache = nil
         return URLSession(configuration: config, delegate: self, delegateQueue: nil)
     }()
-    init(root: URL) { self.root = root }
+    init(root: URL, configuration: URLSessionConfiguration = .ephemeral) { self.root = root; self.configuration = configuration; super.init() }
+    func requestWithReferences(_ body: [String:Any], key: String) {
+        guard body["kind"] as? String == "generate", let paths=body["referencePaths"] as? [String], !paths.isEmpty else { request(body,key:key);return }
+        let requestID=body["requestId"] as? String ?? ""
+        func fail(_ message:String) { DispatchQueue.main.async { self.onUpdate?(["requestId":requestID,"status":"error","message":message]) } }
+        guard paths.count<=8,key.hasPrefix("pk_"),!active else { fail("Kiểm tra key, số ảnh tham chiếu (tối đa 8) hoặc đợi yêu cầu đang chạy.");return }
+        let folder=root.appendingPathComponent("assets").standardizedFileURL.resolvingSymlinksInPath()
+        var images:[Data]=[]
+        for path in paths {
+            let file=URL(fileURLWithPath:path).standardizedFileURL.resolvingSymlinksInPath()
+            guard file.deletingLastPathComponent()==folder,let source=CGImageSourceCreateWithURL(file as CFURL,nil),
+                  let image=CGImageSourceCreateThumbnailAtIndex(source,0,[kCGImageSourceCreateThumbnailFromImageAlways:true,kCGImageSourceThumbnailMaxPixelSize:2048,kCGImageSourceCreateThumbnailWithTransform:true] as CFDictionary) else { fail("Không đọc được ảnh nhân vật chuẩn trong dự án. Chọn lại ảnh trước khi tạo cảnh.");return }
+            let data=NSMutableData()
+            guard let destination=CGImageDestinationCreateWithData(data,"public.png" as CFString,1,nil) else { fail("Không chuẩn bị được ảnh nhân vật.");return }
+            CGImageDestinationAddImage(destination,image,nil)
+            guard CGImageDestinationFinalize(destination) else { fail("Không chuyển được ảnh nhân vật.");return };images.append(data as Data)
+        }
+        func upload(_ index:Int,_ urls:[String]) {
+            if index==images.count { var updated=body;updated["referenceURLs"]=urls;DispatchQueue.main.async { self.request(updated,key:key) };return }
+            if let cached=self.referenceURLCache[paths[index]] { upload(index+1,urls+[cached]);return }
+            var r=URLRequest(url:URL(string:"https://api.plenxai.com/api/v1/developer/media-upload/direct")!)
+            r.httpMethod="POST";r.setValue(key,forHTTPHeaderField:"X-API-Key");r.setValue("application/json",forHTTPHeaderField:"Content-Type")
+            r.httpBody=try? JSONSerialization.data(withJSONObject:["image_data":"data:image/png;base64,"+images[index].base64EncodedString(),"filename":"character-reference.png","media_type":"image","aspect_ratio":"16:9"])
+            self.session.dataTask(with:r) { data,response,error in
+                guard error==nil,let http=response as? HTTPURLResponse,(200..<300).contains(http.statusCode),let data=data,
+                      let json=(try? JSONSerialization.jsonObject(with:data)) as? [String:Any],json["success"] as? Bool != false,
+                      let raw=json["url"] as? String,let url=URL(string:raw),url.scheme=="https",url.user==nil,url.password==nil else { fail("Chưa tải được ảnh nhân vật lên PlenX. Chưa gửi tạo ảnh cảnh; hãy kiểm tra kết nối rồi thử lại.");return }
+                self.referenceURLCache[paths[index]]=raw
+                upload(index+1,urls+[raw])
+            }.resume()
+        }
+        upload(0,[])
+    }
     func request(_ body: [String: Any], key: String) {
         let requestID = body["requestId"] as? String ?? ""
         func reply(_ result: [String: Any]) { DispatchQueue.main.async { self.active = false; var value = result; value["requestId"] = requestID; self.onUpdate?(value) } }
@@ -84,6 +119,7 @@ final class PlenXImages: NSObject, URLSessionTaskDelegate {
             guard let prompt = body["prompt"] as? String, !prompt.isEmpty, prompt.count <= 20000,
                   let model = body["model"] as? String, model.range(of:"^[A-Za-z0-9._-]+$", options:.regularExpression) != nil else { reply(["status":"error","message":"Chọn model và prompt hợp lệ."]); return }
             path = "/generate/image"; payload = ["prompt":prompt,"model":model,"aspect_ratio":"16:9"]
+            if let refs = body["referenceURLs"] as? [String], !refs.isEmpty { payload?["references_urls"] = refs }
             if let resolution = body["resolution"] as? String, !resolution.isEmpty { payload?["resolution"] = resolution }
         } else if kind == "status" {
             guard let task = body["taskId"] as? String, task.range(of:"^[A-Za-z0-9_-]+$", options:.regularExpression) != nil else { reply(["status":"error","message":"Mã tác vụ không hợp lệ."]); return }
