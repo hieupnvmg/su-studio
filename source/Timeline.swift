@@ -45,28 +45,41 @@ final class PlenXVideo: NSObject, URLSessionTaskDelegate {
             };return
         }
         guard kind == "generate",let prompt = body["prompt"] as? String,!prompt.isEmpty,prompt.count<=20000,
-              let model = body["model"] as? String,model.range(of:"^[A-Za-z0-9._-]+$",options:.regularExpression) != nil,
-              let raw = body["imagePath"] as? String else { reply(["status":"error","message":"Thiếu prompt, model hoặc ảnh tham chiếu."]);return }
-        let file = URL(fileURLWithPath:raw).standardizedFileURL.resolvingSymlinksInPath()
-        guard file.deletingLastPathComponent()==root, let source = CGImageSourceCreateWithURL(file as CFURL,nil),
-              let image = CGImageSourceCreateThumbnailAtIndex(source,0,[kCGImageSourceCreateThumbnailFromImageAlways:true,kCGImageSourceThumbnailMaxPixelSize:2048,kCGImageSourceCreateThumbnailWithTransform:true] as CFDictionary) else { reply(["status":"error","message":"Không đọc được ảnh tham chiếu trong dự án."]);return }
-        let png = NSMutableData();guard let out = CGImageDestinationCreateWithData(png,"public.png" as CFString,1,nil) else { reply(["status":"error","message":"Chưa chuẩn bị được ảnh."]);return };CGImageDestinationAddImage(out,image,nil);guard CGImageDestinationFinalize(out) else { reply(["status":"error","message":"Không chuyển được ảnh."]);return }
-        api("/media-upload/direct",key:key,payload:["image_data":"data:image/png;base64,"+(png as Data).base64EncodedString(),"filename":"reference.png","media_type":"image","aspect_ratio":"16:9"]) { uploaded,code in
-            guard let uploaded = uploaded,let imageURL = (uploaded["url"] ?? uploaded["public_url"]) as? String else { reply(["status":"error","message":"Chưa tải được ảnh tham chiếu lên PlenX (HTTP \(code)). Chưa xác nhận tạo video."]);return }
-            let duration = body["duration"] as? Int ?? 5,quality = body["quality"] as? String ?? "720p"
-            let endpoint = body["endpoint"] as? String ?? "/developer/generate/video"
-            guard ["/developer/generate/video","/developer/generate/video-omni"].contains(endpoint) else { reply(["status":"error","message":"Model chưa có đường API video phù hợp."]); return }
-            var payload: [String:Any] = ["model":model,"prompt":prompt,"duration":duration,"aspect_ratio":"16:9"]
-            if endpoint.hasSuffix("video-omni") {
-                payload["input_image_url"]=imageURL;payload["resolution"]=quality.lowercased()
-            } else {
-                payload["mode"]="i2v";payload["start_image_url"]=imageURL;payload["quality"]=quality.lowercased()
+              let model = body["model"] as? String,model.range(of:"^[A-Za-z0-9._-]+$",options:.regularExpression) != nil else { reply(["status":"error","message":"Thiếu prompt hoặc model video."]);return }
+        let endpoint = body["endpoint"] as? String ?? "/developer/generate/video"
+        guard ["/developer/generate/video","/developer/generate/video-omni"].contains(endpoint) else { reply(["status":"error","message":"Model chưa có đường API video phù hợp."]);return }
+        let multi = body["referencePaths"] != nil
+        let paths = multi ? (body["referencePaths"] as? [String] ?? []) : [body["imagePath"] as? String ?? ""]
+        let limits = ["veo-3.1-lite":3,"veo-3.1-fast":3,"veo-3.1-relaxed":3,"veo-3.1-quality":3,"grok-video":8,"grok-video-1.5":8,"omni-flash-video":10,"omni-flash-video-no-logo":10,"wan-3.0":10,"flux-3":10,"kling-4.0":8,"kling-4.0-omni":8,"minimax-h3":9,"minimax-h3-turbo":9]
+        let duration = body["duration"] as? Int ?? 5,quality = (body["quality"] as? String ?? "720p").lowercased()
+        guard !paths.isEmpty, paths.count <= (multi ? (limits[model] ?? 0) : 1), !multi || endpoint.hasSuffix("video-omni"),
+              !multi || quality != "360p", !multi || model != "veo-3.1-lite" || duration == 8 else { reply(["status":"error","message":"Số ảnh, model hoặc chất lượng chưa phù hợp chế độ nhiều ảnh. Kiểm tra trước khi tạo lại."]);return }
+        // Validate every local image before uploading any of them. Preserve input order.
+        var images:[Data]=[]
+        for raw in paths {
+            let file = URL(fileURLWithPath:raw).standardizedFileURL.resolvingSymlinksInPath()
+            guard file.deletingLastPathComponent()==root, let source = CGImageSourceCreateWithURL(file as CFURL,nil),
+                  let image = CGImageSourceCreateThumbnailAtIndex(source,0,[kCGImageSourceCreateThumbnailFromImageAlways:true,kCGImageSourceThumbnailMaxPixelSize:2048,kCGImageSourceCreateThumbnailWithTransform:true] as CFDictionary) else { reply(["status":"error","message":"Không đọc được một ảnh tham chiếu trong dự án. Chưa gửi tạo video."]);return }
+            let png = NSMutableData();guard let out = CGImageDestinationCreateWithData(png,"public.png" as CFString,1,nil) else { reply(["status":"error","message":"Chưa chuẩn bị được ảnh."]);return };CGImageDestinationAddImage(out,image,nil);guard CGImageDestinationFinalize(out) else { reply(["status":"error","message":"Không chuyển được ảnh."]);return };images.append(png as Data)
+        }
+        func upload(_ index:Int,_ urls:[String]) {
+            if index < images.count {
+                self.api("/media-upload/direct",key:key,payload:["image_data":"data:image/png;base64,"+images[index].base64EncodedString(),"filename":"reference-\(index+1).png","media_type":"image","aspect_ratio":"16:9"]) { uploaded,code in
+                    guard let raw = (uploaded?["url"] ?? uploaded?["public_url"]) as? String, let url=URL(string:raw),url.scheme=="https",url.user==nil,url.password==nil else { reply(["status":"error","message":"Chưa tải được ảnh tham chiếu \(index+1) lên PlenX (HTTP \(code)). Chưa gửi yêu cầu tạo video."]);return }
+                    upload(index+1,urls+[raw])
+                };return
             }
+            var payload: [String:Any] = ["model":model,"prompt":prompt,"duration":duration,"aspect_ratio":"16:9"]
+            if multi { payload["reference_images"]=urls;payload["resolution"]=quality }
+            else if endpoint.hasSuffix("video-omni") { payload["input_image_url"]=urls[0];payload["resolution"]=quality }
+            else { payload["mode"]="i2v";payload["start_image_url"]=urls[0];payload["quality"]=quality }
             self.api(endpoint.replacingOccurrences(of:"/developer",with:""),key:key,payload:payload) { json,code in
                 guard let task = json?["task_id"] as? String,!task.isEmpty else { reply(["status":"error","message":"Chưa xác nhận được yêu cầu tạo video (HTTP \(code)). Kiểm tra lịch sử PlenX trước khi tạo lại; có thể đã dùng credit."]);return };reply(["status":"queued","taskId":task,"message":"PlenX đã nhận yêu cầu tạo video…"])
             }
         }
+        upload(0,[])
     }
+
     static func storeDownloadedVideo(_ temporary: URL, in folder: URL) throws -> (url:URL,duration:Double) {
         try FileManager.default.createDirectory(at:folder,withIntermediateDirectories:true)
         // AVFoundation cannot identify a URLSession .tmp file as MP4 on macOS.

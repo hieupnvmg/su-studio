@@ -3,6 +3,8 @@ import Foundation
 final class FixtureProtocol: URLProtocol {
     static var calls:[(String,[String:Any])]=[]
     static var failGeneration=false
+    static var multiTest=false
+    static var failUpload=false
     override class func canInit(with request: URLRequest)->Bool { true }
     override class func canonicalRequest(for request:URLRequest)->URLRequest { request }
     override func startLoading() {
@@ -11,9 +13,10 @@ final class FixtureProtocol: URLProtocol {
         if data==nil,let stream=request.httpBodyStream { stream.open();var bytes=Data();var buf=[UInt8](repeating:0,count:4096);while stream.hasBytesAvailable {let n=stream.read(&buf,maxLength:buf.count);if n<=0 {break};bytes.append(buf,count:n)};stream.close();data=bytes }
         let payload=data.flatMap{try? JSONSerialization.jsonObject(with:$0)} as? [String:Any] ?? [:]
         let path=request.url!.path;Self.calls.append((path,payload));let response:[String:Any];var code=200
-        if path.hasSuffix("/media-upload/direct") { assert((payload["image_data"] as? String)?.hasPrefix("data:image/png;base64,")==true);response=["success":true,"url":"https://media.plenxai.com/reference.png"] }
+        if path.hasSuffix("/media-upload/direct") { assert((payload["image_data"] as? String)?.hasPrefix("data:image/png;base64,")==true);if Self.multiTest {let name=payload["filename"] as! String;code=Self.failUpload && name=="reference-2.png" ? 500:200;response=["success":code==200,"url":"https://media.plenxai.com/"+name]} else {response=["success":true,"url":"https://media.plenxai.com/reference.png"]} }
         else if path.hasSuffix("/generate/video") || path.hasSuffix("/generate/video-omni") {
-            if path.hasSuffix("video-omni") {assert(payload["input_image_url"] as? String == "https://media.plenxai.com/reference.png");assert(payload["resolution"] as? String == "720p");assert(payload["start_image_url"]==nil);assert(payload["quality"]==nil)}
+            if Self.multiTest {assert(payload["reference_images"] as? [String] == ["https://media.plenxai.com/reference-1.png","https://media.plenxai.com/reference-2.png"]);assert(payload["input_image_url"]==nil);assert(payload["start_image_url"]==nil)}
+            else if path.hasSuffix("video-omni") {assert(payload["input_image_url"] as? String == "https://media.plenxai.com/reference.png");assert(payload["resolution"] as? String == "720p");assert(payload["start_image_url"]==nil);assert(payload["quality"]==nil)}
             else { assert(payload["start_image_url"] as? String == "https://media.plenxai.com/reference.png");assert(payload["mode"] as? String == "i2v");assert(payload["quality"] as? String == "720p") };assert(payload["aspect_ratio"] as? String == "16:9");assert(payload["duration"] as? Int == 6);code=Self.failGeneration ? 400:200;response=Self.failGeneration ? ["success":false]:["success":true,"task_id":"task-1","status":"queued"] }
         else { assert(path.hasSuffix("/status/task-1"));response=["success":true,"task_id":"task-1","status":"processing"] }
         client?.urlProtocol(self,didReceive:HTTPURLResponse(url:request.url!,statusCode:code,httpVersion:nil,headerFields:["Content-Type":"application/json"])!,cacheStoragePolicy:.notAllowed)
@@ -37,4 +40,11 @@ run(["requestId":"invalid","kind":"status","taskId":"../other"]);assert(result?[
 FixtureProtocol.failGeneration=false
 var omni=generate;omni["endpoint"]="/developer/generate/video-omni";omni["model"]="kling-4.0"
 run(omni);assert(result?["status"] as? String == "queued");assert(FixtureProtocol.calls.last?.0.hasSuffix("/generate/video-omni")==true);assert(FixtureProtocol.calls.count==7)
+let second=folder.appendingPathComponent("second.png");try bitmap.representation(using:.png,properties:[:])!.write(to:second)
+FixtureProtocol.multiTest=true;var refs=omni;refs["referencePaths"]=[image.path,second.path];refs["model"]="grok-video"
+var before=FixtureProtocol.calls.count;run(refs);assert(result?["status"] as? String == "queued");assert(FixtureProtocol.calls.count==before+3)
+var bad=refs;bad["referencePaths"]=[image.path,"/tmp/outside.png"];before=FixtureProtocol.calls.count;run(bad);assert(result?["status"] as? String == "error");assert(FixtureProtocol.calls.count==before)
+bad=refs;bad["referencePaths"]=Array(repeating:image.path,count:9);run(bad);assert(result?["status"] as? String == "error");assert(FixtureProtocol.calls.count==before)
+bad=refs;bad["model"]="veo-3-fast";run(bad);assert(result?["status"] as? String == "error");assert(FixtureProtocol.calls.count==before)
+FixtureProtocol.failUpload=true;run(refs);assert(result?["status"] as? String == "error");assert(FixtureProtocol.calls.count==before+2);assert(FixtureProtocol.calls.last!.0.hasSuffix("media-upload/direct"))
 print("PlenX video fixtures passed: reference upload, I2V payload, task polling, invalid task guard and no paid retry")

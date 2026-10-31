@@ -3,12 +3,13 @@ import JavaScriptCore
 let c=JSContext()!
 c.exceptionHandler={_,e in fatalError(e!.toString())}
 c.evaluateScript("var window={};var document={addEventListener:function(){}};function setInterval(){};var crypto={randomUUID:function(){return 'test-id'}};")
-for file in ["source/assistant.js", "source/script-import.js", "source/ui.js", "source/updater.js", "source/tts.js", "source/assistant-progress.js", "source/reference-images.js", "source/tts-batch.js", "source/model-picker.js", "source/native-editor.js", "source/narration-player.js", "source/media-studio.js", "source/auto-tags.js", "source/visual-bible.js", "source/dialogue.js"] { c.setObject(try String(contentsOfFile:file,encoding:.utf8),forKeyedSubscript:"source" as NSString);c.evaluateScript("new Function(source)") }
-for name in ["ui.js","assistant.js","script-import.js","reference-images.js","narration-player.js","tts-batch.js","tts.js","assistant-progress.js","model-picker.js","updater.js","media-studio.js","auto-tags.js","visual-bible.js","dialogue.js"] { c.evaluateScript(try String(contentsOfFile:"source/"+name,encoding:.utf8)) }
+for file in ["source/assistant.js", "source/script-import.js", "source/ui.js", "source/updater.js", "source/tts.js", "source/assistant-progress.js", "source/reference-images.js", "source/tts-batch.js", "source/model-picker.js", "source/native-editor.js", "source/narration-player.js", "source/media-studio.js", "source/auto-tags.js", "source/visual-bible.js", "source/dialogue.js", "source/video-references.js"] { c.setObject(try String(contentsOfFile:file,encoding:.utf8),forKeyedSubscript:"source" as NSString);c.evaluateScript("new Function(source)") }
+for name in ["assistant.js","assistant-progress.js","model-picker.js","ui.js"] { c.evaluateScript(try String(contentsOfFile:"source/"+name,encoding:.utf8)) }
 let html=try String(contentsOfFile:"source/index.html",encoding:.utf8)
 precondition(html.range(of:"<script src=\"dialogue.js\"")!.lowerBound < html.range(of:"render();if(native)send('load')")!.lowerBound, "Load state only after workflow scripts are ready")
 let inline=String(html.components(separatedBy:"<script>")[1].components(separatedBy:"</script>")[0].components(separatedBy:"render();if(native)")[0])
 c.evaluateScript(inline)
+for name in ["script-import.js","updater.js","reference-images.js","narration-player.js","tts-batch.js","tts.js","media-studio.js","auto-tags.js","visual-bible.js","dialogue.js","video-references.js"] { c.evaluateScript(try String(contentsOfFile:"source/"+name,encoding:.utf8)) }
 c.evaluateScript("""
 const fixture={id:'p',title:'Test <script>',scenes:[{id:'s',time:'00:00–00:20',chapter:'Chương 1',voice:'Lời kể',image:'Prompt',video:'Prompt video',approvals:{script:true,audio:true},assets:{audio:[{selected:true,path:'/test.mp3',text:'Lời kể'}]}}],references:[],guide:{sourceMode:'script',sourceScript:'Lời kể',brief:{duration:10,audience:'Test'},steps:{storyboard:{approved:true,draft:{scenes:[],document:'',sources:[]}}}}};
 state.projects=[fixture];selected='p';page='assistant';aiViewedStage='tts';
@@ -169,7 +170,7 @@ setSceneVideoPrompt(promptScene.id,'New <camera> motion');
 if(promptScene.video!=='New <camera> motion'||promptScene.approvals.video||!promptScene.approvals.audio||!promptScene.approvals.image||!promptScene.approvals.script)throw Error('video prompt only invalidates video approval');
 if(promptScene.assets.video[0].path!=='/old.mp4'||!promptScene.assets.video[0].selected)throw Error('old clip preserved');
 if(promptProject.guide.steps.storyboard.draft.scenes[0].video!==promptScene.video||promptProject.guide.steps.storyboard.approvedResult.scenes[0].video!==promptScene.video)throw Error('prompt sync to unchanged storyboard');
-if(!videoPromptView(promptScene).includes('New &lt;camera&gt; motion')||!videoPromptView(promptScene).includes('prompt cũ'))throw Error('prompt editor escaping and old clip notice');
+if(!videoPromptView(promptScene).includes('New &lt;camera&gt; motion')||!videoPromptView(promptScene).includes('Tạo clip mới'))throw Error('prompt editor escaping and old clip notice');
 plenxVideoModels=[{id:'test-i2v',name:'Test',modes:['i2v'],aspect_ratios:['16:9'],endpoints:['/developer/generate/video']}];sent=[];
 generateSceneVideo(promptScene.id);
 if(sent[0]?.body.prompt!==promptScene.video)throw Error('new prompt sent to generation');
@@ -177,5 +178,18 @@ const sentPrompt=promptScene.video;setSceneVideoPrompt(promptScene.id,'blocked')
 plenxImagePending=null;promptScene.videoJob.status='failed';
 setAIStoryPrompt(0,'video','Draft only');if(promptScene.video!==sentPrompt||promptProject.guide.steps.storyboard.draft.scenes[0].video!=='Draft only')throw Error('storyboard edits stay draft until approval');
 if(!storyboardVoiceView(promptProject.guide.steps.storyboard).includes('Prompt tạo video'))throw Error('storyboard exposes editable video prompt');
+""")
+c.evaluateScript("""
+const multiScene={id:'multi',chapter:'Cast',voice:'Narration',video:'SHOT 1 @IMAGE_2; SHOT 2 @IMAGE_1',approvals:{script:true,audio:true,image:true,video:true},assets:{image:[{id:'main',selected:true,path:'/main.png',name:'Main'}],video:[]},videoReferenceMode:'references',videoReferences:[{id:'face',path:'/face.png',name:'Face'},{id:'wide',path:'/wide.png',name:'Wide'}]};
+const multiProject={id:'multi-project',scenes:[multiScene],videoSettings:{model:'grok-video',quality:'720p',duration:6}};state.projects=[multiProject];selected=multiProject.id;plenxImagePending=null;
+plenxVideoModels=[{id:'grok-video',name:'Grok',modes:['i2v','r2v'],aspect_ratios:['16:9'],endpoints:['/developer/generate/video','/developer/generate/video-omni']}];const refModel=plenxVideoModels[0];
+if(videoReferenceIssue(multiScene,refModel,videoSettings(multiProject)))throw Error('valid multi refs');
+if(!videoReferenceIssue(multiScene,{...refModel,modes:['i2v']},videoSettings(multiProject)))throw Error('unsupported model blocked');
+sent=[];generateSceneVideo(multiScene.id);if(sent[0]?.body.referencePaths.join(',')!=='/face.png,/wide.png'||sent[0]?.body.endpoint!=='/developer/generate/video-omni'||sent[0]?.body.prompt!=='SHOT 1 <IMAGE_2>; SHOT 2 <IMAGE_1>')throw Error('ordered references and model syntax sent');
+const snapshot=plenxImagePending;plenxImagePending=null;moveVideoReference(multiScene.id,'wide',-1);if(multiScene.videoReferences[0].path!=='/wide.png'||multiScene.approvals.video||!multiScene.approvals.image||!multiScene.approvals.audio)throw Error('reorder preserves other approvals');
+nativeVideoResult({status:'completed',path:'/late.mp4',name:'Late',duration:6},snapshot);if(multiScene.assets.video[0].selected)throw Error('late result with old references not selected');
+window.nativeAsset({request:{project:multiProject.id,scene:multiScene.id,kind:'image',videoReference:true},path:'/imported.png',name:'Imported'});if(multiScene.videoReferences.length!==3||multiScene.assets.image[0].path!=='/main.png'||!multiScene.approvals.image)throw Error('reference import preserves primary image');
+const savedMulti=JSON.parse(JSON.stringify(multiProject));if(savedMulti.scenes[0].videoReferences[0].path!=='/wide.png'||savedMulti.scenes[0].videoReferences[2].path!=='/imported.png')throw Error('reference order persists');
+multiScene.video='@IMAGE_4';if(!videoReferenceIssue(multiScene,refModel,videoSettings(multiProject)))throw Error('nonexistent prompt reference blocked');
 """)
 print("UI scripts parse; dashboard, overview, TTS, references, settings, escaping and workflow gate passed")
