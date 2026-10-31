@@ -129,4 +129,14 @@ window.nativePlenxImage({requestId:plenxImagePending.requestId,status:'completed
 if(selectedCharacterImage(bible.characters[0]).path!=='/new-portrait.png'||bible.approved||bible.characters[0].approved)throw Error('portrait awaits approval');
 if(currentSceneImage({...visualProject,visualBible:{...bible,approved:true}},sceneDesign))throw Error('new portrait marks old scene image stale');
 """)
+c.evaluateScript("""
+const partialProject={id:'partial',scenes:[],timelineEntries:[{id:'ready-1',path:'/one.mp4',name:'One',duration:2},{id:'missing',sceneId:'missing',duration:3},{id:'ready-2',path:'/two.mp4',name:'Two',duration:4}]};
+state.projects=[partialProject];selected=partialProject.id;sent=[];
+timelineRequest('preview');
+if(sent.length!==1||sent[0].body.entries.map(e=>e.id).join(',')!=='ready-1,ready-2')throw Error('partial preview plays available clips in timeline order');
+if(partialProject.timelineEntries.length!==3)throw Error('preview preserves missing timeline slots');
+sent=[];timelineRequest('export');if(sent.length)throw Error('full export still requires all clips');
+sent=[];timelineRequest('preview','missing');if(sent.length)throw Error('missing individual preview blocked');
+partialProject.timelineEntries=[];sent=[];timelineRequest('preview');if(sent.length)throw Error('empty preview blocked');
+""")
 print("UI scripts parse; dashboard, overview, TTS, references, settings, escaping and workflow gate passed")
