@@ -1,4 +1,4 @@
-SỬ STUDIO — BẢN TEAM TEST 0.7.1
+SỬ STUDIO — BẢN TEAM TEST 0.8.0
 
 Yêu cầu: macOS 13 trở lên, Mac Apple Silicon hoặc Intel.
 Đây là bản thử nghiệm ký ad-hoc, chưa có Developer ID / notarization của Apple.
@@ -49,4 +49,7 @@ Không gửi API key hoặc token trong phản hồi.
 Bản Universal đã build cho hai kiến trúc; Mac Intel chưa được chạy thử trên phần cứng Intel.
 
 CẬP NHẬT OTA
-Cài bản 0.7.1 này một lần để có updater. Từ bản sau, mở Cài đặt & kết nối → Cập nhật Sử Studio. Repo công khai hieupnvmg/su-studio: team kiểm tra và tải cập nhật không cần đăng nhập GitHub hay nhập token. Bản mới được tải, kiểm tra SHA-256/bundle ID/phiên bản/chữ ký rồi cài sau khi bạn xác nhận. Nếu đang tạo tài nguyên hoặc xuất video, đợi hoàn tất trước.
+Cài bản 0.8.0 này một lần để có updater. Từ bản sau, mở Cài đặt & kết nối → Cập nhật Sử Studio. Repo công khai hieupnvmg/su-studio: team kiểm tra và tải cập nhật không cần đăng nhập GitHub hay nhập token. Bản mới được tải, kiểm tra SHA-256/bundle ID/phiên bản/chữ ký rồi cài sau khi bạn xác nhận. Nếu đang tạo tài nguyên hoặc xuất video, đợi hoàn tất trước.
+
+HỘI THOẠI NHIỀU NHÂN VẬT
+Trong Giọng đọc: thêm người nói và chọn giọng riêng; có thể lấy tên từ hồ sơ tạo hình. Ở từng cảnh, chọn Hội thoại nhiều nhân vật, thêm các lượt lời và tag cảm xúc rồi Tạo audio với Eleven v3/v4. Tối đa 2.000 ký tự và 10 giọng mỗi cảnh. Nghe/duyệt và dùng trên timeline như audio thuyết minh. Chưa có lip-sync tự động.

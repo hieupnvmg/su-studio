@@ -3,8 +3,8 @@ import JavaScriptCore
 let c=JSContext()!
 c.exceptionHandler={_,e in fatalError(e!.toString())}
 c.evaluateScript("var window={};var document={addEventListener:function(){}};function setInterval(){};var crypto={randomUUID:function(){return 'test-id'}};")
-for file in ["source/assistant.js", "source/script-import.js", "source/ui.js", "source/updater.js", "source/tts.js", "source/assistant-progress.js", "source/reference-images.js", "source/tts-batch.js", "source/model-picker.js", "source/native-editor.js", "source/narration-player.js", "source/media-studio.js", "source/auto-tags.js", "source/visual-bible.js"] { c.setObject(try String(contentsOfFile:file,encoding:.utf8),forKeyedSubscript:"source" as NSString);c.evaluateScript("new Function(source)") }
-for name in ["ui.js","assistant.js","script-import.js","reference-images.js","narration-player.js","tts-batch.js","tts.js","assistant-progress.js","model-picker.js","updater.js","media-studio.js","auto-tags.js","visual-bible.js"] { c.evaluateScript(try String(contentsOfFile:"source/"+name,encoding:.utf8)) }
+for file in ["source/assistant.js", "source/script-import.js", "source/ui.js", "source/updater.js", "source/tts.js", "source/assistant-progress.js", "source/reference-images.js", "source/tts-batch.js", "source/model-picker.js", "source/native-editor.js", "source/narration-player.js", "source/media-studio.js", "source/auto-tags.js", "source/visual-bible.js", "source/dialogue.js"] { c.setObject(try String(contentsOfFile:file,encoding:.utf8),forKeyedSubscript:"source" as NSString);c.evaluateScript("new Function(source)") }
+for name in ["ui.js","assistant.js","script-import.js","reference-images.js","narration-player.js","tts-batch.js","tts.js","assistant-progress.js","model-picker.js","updater.js","media-studio.js","auto-tags.js","visual-bible.js","dialogue.js"] { c.evaluateScript(try String(contentsOfFile:"source/"+name,encoding:.utf8)) }
 let html=try String(contentsOfFile:"source/index.html",encoding:.utf8)
 let inline=String(html.components(separatedBy:"<script>")[1].components(separatedBy:"</script>")[0].components(separatedBy:"render();if(native)")[0])
 c.evaluateScript(inline)
@@ -138,5 +138,26 @@ if(partialProject.timelineEntries.length!==3)throw Error('preview preserves miss
 sent=[];timelineRequest('export');if(sent.length)throw Error('full export still requires all clips');
 sent=[];timelineRequest('preview','missing');if(sent.length)throw Error('missing individual preview blocked');
 partialProject.timelineEntries=[];sent=[];timelineRequest('preview');if(sent.length)throw Error('empty preview blocked');
+""")
+c.evaluateScript("""
+const dialogScene={id:'dialog-scene',voice:'Original narration',chapter:'Dialogue',time:'00:00',approvals:{script:true,audio:true},assets:{audio:[{id:'old',selected:true,path:'/old.mp3',text:'Original narration'}]},dialogue:{enabled:true,turns:[{id:'t1',speakerId:'a',text:'[angry] Đi thôi!'},{id:'t2',speakerId:'b',text:'[whispers] Khoan đã.'}]}};
+const dialogProject={id:'dialog-project',scenes:[dialogScene],ttsSettings:{voice:'',model:'eleven_v3'},dialogueSpeakers:[{id:'a',name:'A <script>',voice:'voice_a'},{id:'b',name:'B',voice:'voice_b'}],guide:{sourceMode:'script',steps:{storyboard:{approved:true,draft:{scenes:[]}}},brief:{}}};
+state.projects=[dialogProject];selected=dialogProject.id;ttsPending=null;sent=[];
+if(dialogueIssue(dialogProject,dialogScene,'eleven_v3'))throw Error('valid dialogue');
+if(!dialogueIssue(dialogProject,dialogScene,'eleven_flash_v2_5'))throw Error('dialogue model validation');
+if(ttsAssetCurrent(dialogScene,dialogScene.assets.audio[0]))throw Error('narration not current for dialogue');
+if(!dialogueSceneView(dialogProject,dialogScene,false).includes('A &lt;script&gt;'))throw Error('speaker escaping');
+generateSceneTTS(dialogScene.id);
+if(sent.length!==1||sent[0].body.dialogueInputs[1].voice_id!=='voice_b'||sent[0].body.dialogueInputs[0].text!=='[angry] Đi thôi!')throw Error('ordered multi voice request');
+window.nativeTTS({requestId:ttsPending.requestId,status:'completed',path:'/dialogue.mp3',name:'Dialogue'});
+const dialogueAudio=dialogScene.assets.audio.find(a=>a.selected);
+if(!ttsAssetCurrent(dialogScene,dialogueAudio)||narrationClips(dialogProject)[0].path!=='/dialogue.mp3')throw Error('dialogue integrates with player');
+editDialogueSpeaker('b','voice','new_voice');if(ttsAssetCurrent(dialogScene,dialogueAudio)||dialogScene.approvals.audio)throw Error('voice change invalidates approval');
+sent=[];startAllAudio();if(!sent[0]?.body.dialogueInputs||sent[0].body.dialogueInputs[1].voice_id!=='new_voice')throw Error('batch carries dialogue');
+window.nativeTTS({requestId:ttsPending.requestId,status:'completed',path:'/dialogue-new.mp3',name:'New'});
+if(dialogProject.ttsBatch.status!=='completed')throw Error('dialogue batch completes');
+const oldSignature=dialogueSignature(dialogProject,dialogScene);moveDialogueTurn(dialogScene.id,'t2',-1);if(dialogueSignature(dialogProject,dialogScene)===oldSignature)throw Error('order invalidates dialogue');
+dialogScene.dialogue.turns[0].text='x'.repeat(2001);if(!dialogueIssue(dialogProject,dialogScene,'eleven_v3'))throw Error('dialogue length validation');
+const dialogSaved=JSON.parse(JSON.stringify(dialogProject));if(dialogSaved.dialogueSpeakers[1].voice!=='new_voice'||dialogSaved.scenes[0].dialogue.turns[0].id!=='t2')throw Error('dialogue persists');
 """)
 print("UI scripts parse; dashboard, overview, TTS, references, settings, escaping and workflow gate passed")

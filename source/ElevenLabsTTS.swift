@@ -6,7 +6,8 @@ final class ElevenLabsTTS: NSObject, URLSessionTaskDelegate {
     private var session: URLSession?
     private var active = false
     let root: URL
-    init(root: URL) { self.root = root }
+    private let configuration: URLSessionConfiguration
+    init(root: URL, configuration: URLSessionConfiguration = .ephemeral) { self.root = root; self.configuration = configuration }
     var busy: Bool { active }
     static func supportsFileSpeech(_ model: String) -> Bool {
         !model.lowercased().contains("conversational") && !model.lowercased().contains("realtime")
@@ -20,6 +21,13 @@ final class ElevenLabsTTS: NSObject, URLSessionTaskDelegate {
             if let next = next, !next.isEmpty { payload["next_text"] = next }
         }
         return payload
+    }
+    static func dialoguePayload(inputs: [[String: String]], model: String) -> [String: Any]? {
+        guard ["eleven_v3", "eleven_v4"].contains(model), !inputs.isEmpty,
+              inputs.allSatisfy({ !($0["text"] ?? "").trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && ($0["voice_id"] ?? "").range(of: "^[A-Za-z0-9_-]+$", options: .regularExpression) != nil }),
+              inputs.reduce(0, { $0 + ($1["text"] ?? "").count }) <= 2000,
+              Set(inputs.compactMap { $0["voice_id"] }).count <= 10 else { return nil }
+        return ["inputs": inputs.map { ["text": $0["text"]!, "voice_id": $0["voice_id"]!] }, "model_id": model, "language_code": "vi"]
     }
     static func apiError(status: Int, data: Data?, kind: String, model: String?, secrets: [String]) -> String {
         let object = data.flatMap { try? JSONSerialization.jsonObject(with: $0) } as? [String: Any]
@@ -62,6 +70,14 @@ final class ElevenLabsTTS: NSObject, URLSessionTaskDelegate {
         var payload: [String: Any]?
         if kind == "voices" { path = "/v2/voices?page_size=100&include_total_count=false" }
         else if kind == "models" { path = "/v1/models" }
+        else if kind == "generate", let inputs = body["dialogueInputs"] as? [[String: String]] {
+            guard let model = body["model"] as? String,
+                  let dialogue = Self.dialoguePayload(inputs: inputs, model: model) else {
+                fail("Hội thoại cần Eleven v3/v4, mỗi lượt có lời và Voice ID; tối đa 2.000 ký tự, 10 giọng mỗi cảnh."); return
+            }
+            path = "/v1/text-to-dialogue?output_format=mp3_44100_128"
+            payload = dialogue
+        }
         else if kind == "generate" {
             guard let voice = body["voice"] as? String, !voice.isEmpty,
                   voice.range(of: "^[A-Za-z0-9_-]+$", options: .regularExpression) != nil,
@@ -89,7 +105,7 @@ final class ElevenLabsTTS: NSObject, URLSessionTaskDelegate {
             request.setValue("application/json", forHTTPHeaderField: "Content-Type")
             request.httpBody = try? JSONSerialization.data(withJSONObject: payload)
         }
-        let config = URLSessionConfiguration.ephemeral
+        let config = configuration
         config.timeoutIntervalForRequest = 90; config.timeoutIntervalForResource = 180
         config.httpShouldSetCookies = false; config.urlCache = nil
         let session = URLSession(configuration: config, delegate: self, delegateQueue: nil)
@@ -102,7 +118,7 @@ final class ElevenLabsTTS: NSObject, URLSessionTaskDelegate {
                 result["message"] = kind == "generate" ? "Kết nối bị gián đoạn. Chưa nhận được audio; yêu cầu có thể đã dùng credit. Kiểm tra lịch sử ElevenLabs trước khi tạo lại." : "Không kết nối được ElevenLabs. Hãy thử lại."
             } else if !(200..<300).contains(status) {
                 result["httpStatus"] = status
-                result["message"] = Self.apiError(status: status, data: data, kind: kind, model: body["model"] as? String, secrets: [key, body["text"] as? String ?? "", body["previousText"] as? String ?? "", body["nextText"] as? String ?? ""])
+                result["message"] = Self.apiError(status: status, data: data, kind: kind, model: body["model"] as? String, secrets: ((body["dialogueInputs"] as? [[String: String]] ?? []).compactMap { $0["text"] }) + [key, body["text"] as? String ?? "", body["previousText"] as? String ?? "", body["nextText"] as? String ?? ""])
             } else if kind == "generate" {
                 if let data = data, !data.isEmpty, (response?.mimeType ?? "").hasPrefix("audio/") {
                     do {
