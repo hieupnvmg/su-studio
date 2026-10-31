@@ -160,4 +160,21 @@ const oldSignature=dialogueSignature(dialogProject,dialogScene);moveDialogueTurn
 dialogScene.dialogue.turns[0].text='x'.repeat(2001);if(!dialogueIssue(dialogProject,dialogScene,'eleven_v3'))throw Error('dialogue length validation');
 const dialogSaved=JSON.parse(JSON.stringify(dialogProject));if(dialogSaved.dialogueSpeakers[1].voice!=='new_voice'||dialogSaved.scenes[0].dialogue.turns[0].id!=='t2')throw Error('dialogue persists');
 """)
+c.evaluateScript("""
+const promptScene={id:'prompt-scene',chapter:'Test',voice:'Lời',image:'Image',video:'Old video prompt',approvals:{script:true,audio:true,image:true,video:true},assets:{image:[{id:'reference',path:'/image.png',selected:true}],audio:[{id:'voice',path:'/voice.mp3',selected:true}],video:[{id:'clip',path:'/old.mp4',selected:true,prompt:'Old video prompt'}]}};
+const promptProject={id:'prompt-project',scenes:[promptScene],videoSettings:{model:'test-i2v',duration:5,quality:'1080p'},guide:{brief:{},steps:{storyboard:{approved:true,draft:{scenes:[{chapter:'Test',voice:'Lời',image:'Image',video:'Old video prompt'}]},approvedResult:{scenes:[{chapter:'Test',voice:'Lời',image:'Image',video:'Old video prompt'}]}}}}};
+state.projects=[promptProject];selected=promptProject.id;plenxImagePending=null;
+setSceneVideoPrompt(promptScene.id,'New <camera> motion');
+if(promptScene.video!=='New <camera> motion'||promptScene.approvals.video||!promptScene.approvals.audio||!promptScene.approvals.image||!promptScene.approvals.script)throw Error('video prompt only invalidates video approval');
+if(promptScene.assets.video[0].path!=='/old.mp4'||!promptScene.assets.video[0].selected)throw Error('old clip preserved');
+if(promptProject.guide.steps.storyboard.draft.scenes[0].video!==promptScene.video||promptProject.guide.steps.storyboard.approvedResult.scenes[0].video!==promptScene.video)throw Error('prompt sync to unchanged storyboard');
+if(!videoPromptView(promptScene).includes('New &lt;camera&gt; motion')||!videoPromptView(promptScene).includes('prompt cũ'))throw Error('prompt editor escaping and old clip notice');
+plenxVideoModels=[{id:'test-i2v',name:'Test',modes:['i2v'],aspect_ratios:['16:9'],endpoints:['/developer/generate/video']}];sent=[];
+generateSceneVideo(promptScene.id);
+if(sent[0]?.body.prompt!==promptScene.video)throw Error('new prompt sent to generation');
+const sentPrompt=promptScene.video;setSceneVideoPrompt(promptScene.id,'blocked');if(promptScene.video!==sentPrompt)throw Error('editing blocked during active request');
+plenxImagePending=null;promptScene.videoJob.status='failed';
+setAIStoryPrompt(0,'video','Draft only');if(promptScene.video!==sentPrompt||promptProject.guide.steps.storyboard.draft.scenes[0].video!=='Draft only')throw Error('storyboard edits stay draft until approval');
+if(!storyboardVoiceView(promptProject.guide.steps.storyboard).includes('Prompt tạo video'))throw Error('storyboard exposes editable video prompt');
+""")
 print("UI scripts parse; dashboard, overview, TTS, references, settings, escaping and workflow gate passed")
