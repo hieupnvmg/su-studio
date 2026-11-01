@@ -3,13 +3,13 @@ import JavaScriptCore
 let c=JSContext()!
 c.exceptionHandler={_,e in fatalError(e!.toString())}
 c.evaluateScript("var window={};var document={addEventListener:function(){}};function setInterval(){};var crypto={randomUUID:function(){return 'test-id'}};")
-for file in ["source/assistant.js", "source/script-import.js", "source/ui.js", "source/updater.js", "source/tts.js", "source/assistant-progress.js", "source/reference-images.js", "source/tts-batch.js", "source/model-picker.js", "source/native-editor.js", "source/narration-player.js", "source/media-studio.js", "source/auto-tags.js", "source/visual-bible.js", "source/dialogue.js", "source/video-references.js", "source/excel-import.js"] { c.setObject(try String(contentsOfFile:file,encoding:.utf8),forKeyedSubscript:"source" as NSString);c.evaluateScript("new Function(source)") }
+for file in ["source/assistant.js", "source/script-import.js", "source/ui.js", "source/updater.js", "source/tts.js", "source/assistant-progress.js", "source/reference-images.js", "source/tts-batch.js", "source/model-picker.js", "source/native-editor.js", "source/narration-player.js", "source/media-studio.js", "source/auto-tags.js", "source/visual-bible.js", "source/dialogue.js", "source/video-references.js", "source/excel-import.js", "source/angle-images.js"] { c.setObject(try String(contentsOfFile:file,encoding:.utf8),forKeyedSubscript:"source" as NSString);c.evaluateScript("new Function(source)") }
 for name in ["assistant.js","assistant-progress.js","model-picker.js","ui.js"] { c.evaluateScript(try String(contentsOfFile:"source/"+name,encoding:.utf8)) }
 let html=try String(contentsOfFile:"source/index.html",encoding:.utf8)
 precondition(html.range(of:"<script src=\"dialogue.js\"")!.lowerBound < html.range(of:"render();if(native)send('load')")!.lowerBound, "Load state only after workflow scripts are ready")
 let inline=String(html.components(separatedBy:"<script>")[1].components(separatedBy:"</script>")[0].components(separatedBy:"render();if(native)")[0])
 c.evaluateScript(inline)
-for name in ["script-import.js","updater.js","reference-images.js","narration-player.js","tts-batch.js","tts.js","media-studio.js","auto-tags.js","visual-bible.js","dialogue.js","video-references.js","excel-import.js"] { c.evaluateScript(try String(contentsOfFile:"source/"+name,encoding:.utf8)) }
+for name in ["script-import.js","updater.js","reference-images.js","narration-player.js","tts-batch.js","tts.js","media-studio.js","auto-tags.js","visual-bible.js","dialogue.js","video-references.js","excel-import.js","angle-images.js"] { c.evaluateScript(try String(contentsOfFile:"source/"+name,encoding:.utf8)) }
 c.evaluateScript("""
 const fixture={id:'p',title:'Test <script>',scenes:[{id:'s',time:'00:00–00:20',chapter:'Chương 1',voice:'Lời kể',image:'Prompt',video:'Prompt video',approvals:{script:true,audio:true},assets:{audio:[{selected:true,path:'/test.mp3',text:'Lời kể'}]}}],references:[],guide:{sourceMode:'script',sourceScript:'Lời kể',brief:{duration:10,audience:'Test'},steps:{storyboard:{approved:true,draft:{scenes:[],document:'',sources:[]}}}}};
 state.projects=[fixture];selected='p';page='assistant';aiViewedStage='tts';
@@ -210,5 +210,26 @@ window.nativeImported(excelData);const importedProject=project();if(state.projec
 if(storyboardIssue(importedProject,importedProject.guide.steps.storyboard.draft))throw Error('imported storyboard ready for review');
 approveAI();if(importedProject.scenes[0].voice!=='Exact original'||!importedProject.scenes[0].approvals.script||importedProject.scenes[0].assets.audio)throw Error('approval leads to TTS without generating');
 const beforeImportScenes=importedProject.scenes;excelImportPending={requestId:'replace',mode:'replace',projectId:importedProject.id};window.nativeImported({...excelData,requestId:'replace'});if(importedProject.scenes!==beforeImportScenes||importedProject.guide.steps.storyboard.approved)throw Error('replacement retains active scenes until review');
+""")
+c.evaluateScript("""
+let angleSequence=0;crypto.randomUUID=function(){return 'angle-id-'+(++angleSequence)};
+const angleScene={id:'angle-scene',chapter:'Angles',time:'00:00–00:08',voice:'Narration',image:'Original image',video:'SHOT 1 @IMAGE_1; SHOT 2 @IMAGE_2',characterIds:['hero'],designAssigned:true,approvals:{script:true,audio:true,image:false},assets:{},angleImageMode:true,videoReferenceMode:'references',videoReferences:[{id:'wide',angle:'Wide',imagePrompt:'Wide shot, troops',images:[],approved:false},{id:'close',angle:'Close',imagePrompt:'Close up, hero',images:[],approved:false}]};
+const angleProject={id:'angle-project',scenes:[angleScene],plenxImageModel:'angle-model',visualBible:{style:'Muted historical',approved:true,characters:[{id:'hero',name:'Hero',description:'Red cloak',approved:true,images:[{id:'hero-ref',path:'/hero.png',selected:true}]}]}};
+state.projects=[angleProject];selected=angleProject.id;plenxImagePending=null;plenxImageModels=[{id:'angle-model',name:'Fixture',max_references:8,resolutions:['1k']}];sent=[];
+startAngleImageBatch(angleScene.id);if(sent.length!==1||sent[0].body.angleImageId!=='wide'||!sent[0].body.prompt.includes('Wide shot, troops')||sent[0].body.referencePaths[0]!=='/hero.png')throw Error('first angle receives own prompt and shared identity');
+window.nativePlenxImage({requestId:plenxImagePending.requestId,status:'completed',path:'/wide.png',name:'Wide'});
+if(sent.length!==2||plenxImagePending.angleImageId!=='close'||!sent[1].body.prompt.includes('Close up, hero'))throw Error('queue sends second independent prompt');
+window.nativePlenxImage({requestId:plenxImagePending.requestId,status:'completed',path:'/close.png',name:'Close'});
+if(angleProject.imageBatch.status!=='completed'||angleScene.videoReferences[0].path!=='/wide.png'||angleScene.videoReferences[1].path!=='/close.png'||angleScene.videoReferences.some(r=>r.approved))throw Error('results stored per angle without auto approval');
+if(!videoReferenceIssue(angleScene,{id:'grok-video',modes:['r2v'],endpoints:['/developer/generate/video-omni']},{duration:8,quality:'720p'}))throw Error('unapproved angles block video');
+approveAllAngleImages(angleScene.id);if(!angleImagesComplete(angleProject,angleScene)||!angleScene.approvals.image||selectedSceneAsset(angleScene,'image').path!=='/wide.png')throw Error('approved angles select primary and complete scene');
+editAngleImagePrompt(angleScene.id,'close','Changed close');if(angleScene.videoReferences[1].approved||angleScene.approvals.image||angleScene.videoReferences[1].images.length!==1)throw Error('editing preserves versions and requires reapproval');
+sent=[];startAngleImageBatch(angleScene.id);if(sent.length!==1||plenxImagePending.angleImageId!=='close')throw Error('batch skips existing current angle');
+window.nativePlenxImage({requestId:plenxImagePending.requestId,status:'error',message:'Fixture error'});if(angleProject.imageBatch.status!=='paused'||sent.length!==1)throw Error('queue pauses without retry on failure');
+clearAngleJob(angleScene.id,'close');sent=[];startAngleImageBatch(angleScene.id);stopImageBatch();window.nativePlenxImage({requestId:plenxImagePending.requestId,status:'completed',path:'/close-new.png',name:'New close'});if(angleProject.imageBatch.status!=='paused'||angleScene.videoReferences[1].images.length!==2)throw Error('stop retains current result and versions');
+const savedAngles=JSON.parse(JSON.stringify(angleProject));if(savedAngles.scenes[0].videoReferences[1].imagePrompt!=='Changed close'||savedAngles.scenes[0].videoReferences[1].images.length!==2)throw Error('angle prompt and versions persist');
+window.nativeAsset({request:{project:angleProject.id,scene:angleScene.id,kind:'image',angleImageId:'close'},path:'/manual-close.png',name:'Manual'});if(angleScene.videoReferences[1].path!=='/manual-close.png'||angleScene.videoReferences[1].approved)throw Error('manual import belongs to angle and awaits review');
+angleProject.imageBatch.status='running';recoverAssistantState();if(angleProject.imageBatch.status!=='paused')throw Error('restart pauses angle queue');
+if(!videoReferencesView(angleProject,angleScene).includes('Prompt tạo riêng ảnh góc máy này'))throw Error('separate prompt editor shown');
 """)
 print("UI scripts parse; dashboard, overview, TTS, references, settings, escaping and workflow gate passed")

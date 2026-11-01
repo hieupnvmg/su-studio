@@ -1,4 +1,4 @@
-SỬ STUDIO — BẢN TEAM TEST 0.11.0
+SỬ STUDIO — BẢN TEAM TEST 0.12.0
 
 Yêu cầu: macOS 13 trở lên, Mac Apple Silicon hoặc Intel.
 Đây là bản thử nghiệm ký ad-hoc, chưa có Developer ID / notarization của Apple.
@@ -49,7 +49,7 @@ Không gửi API key hoặc token trong phản hồi.
 Bản Universal đã build cho hai kiến trúc; Mac Intel chưa được chạy thử trên phần cứng Intel.
 
 CẬP NHẬT OTA
-Cài bản 0.11.0 này một lần để có updater. Từ bản sau, mở Cài đặt & kết nối → Cập nhật Sử Studio. Repo công khai hieupnvmg/su-studio: team kiểm tra và tải cập nhật không cần đăng nhập GitHub hay nhập token. Bản mới được tải, kiểm tra SHA-256/bundle ID/phiên bản/chữ ký rồi cài sau khi bạn xác nhận. Nếu đang tạo tài nguyên hoặc xuất video, đợi hoàn tất trước.
+Cài bản 0.12.0 này một lần để có updater. Từ bản sau, mở Cài đặt & kết nối → Cập nhật Sử Studio. Repo công khai hieupnvmg/su-studio: team kiểm tra và tải cập nhật không cần đăng nhập GitHub hay nhập token. Bản mới được tải, kiểm tra SHA-256/bundle ID/phiên bản/chữ ký rồi cài sau khi bạn xác nhận. Nếu đang tạo tài nguyên hoặc xuất video, đợi hoàn tất trước.
 
 HỘI THOẠI NHIỀU NHÂN VẬT
 Trong Giọng đọc: thêm người nói và chọn giọng riêng; có thể lấy tên từ hồ sơ tạo hình. Ở từng cảnh, chọn Hội thoại nhiều nhân vật, thêm các lượt lời và tag cảm xúc rồi Tạo audio với Eleven v3/v4. Tối đa 2.000 ký tự và 10 giọng mỗi cảnh. Nghe/duyệt và dùng trên timeline như audio thuyết minh. Chưa có lip-sync tự động.
@@ -63,3 +63,6 @@ Trong danh sách nhiều ảnh: đặt tên góc, hành động và số giây c
 
 NHẬP STORYBOARD EXCEL
 Tạo video → Nhập storyboard từ Excel (.xlsx) → Chọn file. App đọc theo tiêu đề cột (có thể đổi thứ tự), giữ nguyên lời đọc, prompt ảnh/video, thời gian, ghi chú và các sheet hồ sơ/nguồn. Mở bản nháp để xem/sửa rồi duyệt → tạo giọng đọc. Không gọi AI hoặc tạo media chỉ vì nhập file. Nhập thay vào dự án có sẵn giữ storyboard/tài nguyên đang dùng đến khi duyệt bản thay thế. Hiện chỉ hỗ trợ .xlsx; bộ đọc dùng Python 3 trên macOS.
+
+TẠO RIÊNG ẢNH TỪNG GÓC
+Mở cảnh trong Ảnh tham chiếu hoặc Video & xuất → Nhiều ảnh có thứ tự (R2V) → Tạo riêng từng ảnh góc máy. Mỗi góc có prompt, phiên bản, nhập ảnh và duyệt riêng. Thêm góc rồi điền prompt; có thể tạo từng ảnh hoặc Tạo tất cả ảnh còn thiếu của cảnh. Chạy lần lượt, dùng credit riêng từng ảnh, dùng chung ảnh nhân vật chuẩn đã duyệt; dừng khi lỗi và không tự duyệt. Duyệt đủ ảnh góc trước khi tạo video. Ảnh đầu danh sách thành ảnh chính; ảnh cũ vẫn giữ. Nếu đóng app, kiểm tra tác vụ đã gửi trước khi chạy tiếp.
