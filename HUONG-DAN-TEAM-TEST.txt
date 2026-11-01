@@ -1,4 +1,4 @@
-SỬ STUDIO — BẢN TEAM TEST 0.9.0
+SỬ STUDIO — BẢN TEAM TEST 0.10.0
 
 Yêu cầu: macOS 13 trở lên, Mac Apple Silicon hoặc Intel.
 Đây là bản thử nghiệm ký ad-hoc, chưa có Developer ID / notarization của Apple.
@@ -49,10 +49,14 @@ Không gửi API key hoặc token trong phản hồi.
 Bản Universal đã build cho hai kiến trúc; Mac Intel chưa được chạy thử trên phần cứng Intel.
 
 CẬP NHẬT OTA
-Cài bản 0.9.0 này một lần để có updater. Từ bản sau, mở Cài đặt & kết nối → Cập nhật Sử Studio. Repo công khai hieupnvmg/su-studio: team kiểm tra và tải cập nhật không cần đăng nhập GitHub hay nhập token. Bản mới được tải, kiểm tra SHA-256/bundle ID/phiên bản/chữ ký rồi cài sau khi bạn xác nhận. Nếu đang tạo tài nguyên hoặc xuất video, đợi hoàn tất trước.
+Cài bản 0.10.0 này một lần để có updater. Từ bản sau, mở Cài đặt & kết nối → Cập nhật Sử Studio. Repo công khai hieupnvmg/su-studio: team kiểm tra và tải cập nhật không cần đăng nhập GitHub hay nhập token. Bản mới được tải, kiểm tra SHA-256/bundle ID/phiên bản/chữ ký rồi cài sau khi bạn xác nhận. Nếu đang tạo tài nguyên hoặc xuất video, đợi hoàn tất trước.
 
 HỘI THOẠI NHIỀU NHÂN VẬT
 Trong Giọng đọc: thêm người nói và chọn giọng riêng; có thể lấy tên từ hồ sơ tạo hình. Ở từng cảnh, chọn Hội thoại nhiều nhân vật, thêm các lượt lời và tag cảm xúc rồi Tạo audio với Eleven v3/v4. Tối đa 2.000 ký tự và 10 giọng mỗi cảnh. Nghe/duyệt và dùng trên timeline như audio thuyết minh. Chưa có lip-sync tự động.
 
 NHIỀU ẢNH CHO MỘT CẢNH VIDEO
 Ở Ảnh tham chiếu hoặc Video & xuất, mở cảnh → Ảnh dùng tạo video → Nhiều ảnh có thứ tự (R2V). Thêm ảnh từ dự án hoặc nhập riêng; dùng ↑↓ đổi thứ tự IMAGE_1, IMAGE_2… Dán prompt nhiều shot vào ô Prompt tạo video. Chọn model có R2V và đủ số ảnh (ví dụ Omni Flash hoặc Grok Video); app kiểm tra giới hạn trước khi tạo. Grok tự đổi @IMAGE_1 thành <IMAGE_1>. Đây là ảnh hướng dẫn nội dung, không bảo đảm chuyển shot chính xác hoặc đồng bộ miệng với TTS.
+
+KẾ HOẠCH GÓC MÁY
+Trong danh sách nhiều ảnh: đặt tên góc, hành động và số giây cho từng ảnh. Bấm Tạo prompt: một video đủ các góc máy. Tổng giây khớp độ dài clip; có thể để trống số giây để chia phần còn lại. Prompt cũ có thể khôi phục. Model không bảo đảm thực hiện chính xác mọi shot; cần xem duyệt.
+Định hướng prompt ảnh/video hiện từ bước đầu và gửi cùng ngữ cảnh AI. Prompt riêng cùng ghi chú ảnh góc bổ sung hiện ngay khi có storyboard. Bản cũ không tự viết lại; yêu cầu AI sửa hoặc tạo bản nháp mới để áp dụng quy chuẩn chi tiết.

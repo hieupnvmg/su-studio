@@ -192,4 +192,12 @@ window.nativeAsset({request:{project:multiProject.id,scene:multiScene.id,kind:'i
 const savedMulti=JSON.parse(JSON.stringify(multiProject));if(savedMulti.scenes[0].videoReferences[0].path!=='/wide.png'||savedMulti.scenes[0].videoReferences[2].path!=='/imported.png')throw Error('reference order persists');
 multiScene.video='@IMAGE_4';if(!videoReferenceIssue(multiScene,refModel,videoSettings(multiProject)))throw Error('nonexistent prompt reference blocked');
 """)
+c.evaluateScript("""
+multiScene.video='Old prompt';multiScene.videoReferences=[{id:'a1',path:'/a.png',angle:'Trung rộng',action:'Nhìn đội quân',seconds:3},{id:'a2',path:'/b.png',angle:'Cận mặt',action:'Nói dứt khoát'}];multiProject.videoSettings.duration=8;
+const angleResult=buildAnglePrompt(multiScene,videoSettings(multiProject));if(angleResult.issue||!angleResult.text.includes('0.00–3.00')||!angleResult.text.includes('3.00–8.00')||!angleResult.text.includes('MỘT video')||!angleResult.text.includes('SHOT 2 — @IMAGE_2'))throw Error('one clip multi angle plan duration and binding');
+plenxImagePending=null;applyAnglePrompt(multiScene.id);if(multiScene.previousAnglePrompt!=='Old prompt'||multiScene.video!==angleResult.text)throw Error('apply shot plan preserves previous prompt');restoreAnglePrompt(multiScene.id);if(multiScene.video!=='Old prompt')throw Error('restore prompt');
+multiScene.videoReferences[1].seconds=6;if(!buildAnglePrompt(multiScene,videoSettings(multiProject)).issue)throw Error('overlong shot plan rejected');delete multiScene.videoReferences[1].seconds;multiScene.videoReferences[0].action='';if(!buildAnglePrompt(multiScene,videoSettings(multiProject)).issue)throw Error('missing action rejected');
+const promptGuide={id:'brief',scenes:[],guide:{brief:{},steps:{}}};state.projects=[promptGuide];selected=promptGuide.id;
+if(!visualPromptBriefView(promptGuide,false).includes('Định hướng prompt ảnh'))throw Error('visual brief shown from beginning');setVisualPromptBrief('Detailed custom lighting');if(aiContext(promptGuide,'ideas').visualPromptBrief!=='Detailed custom lighting')throw Error('visual brief passed to AI from first step');
+""")
 print("UI scripts parse; dashboard, overview, TTS, references, settings, escaping and workflow gate passed")
