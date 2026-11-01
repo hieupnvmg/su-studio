@@ -3,13 +3,13 @@ import JavaScriptCore
 let c=JSContext()!
 c.exceptionHandler={_,e in fatalError(e!.toString())}
 c.evaluateScript("var window={};var document={addEventListener:function(){}};function setInterval(){};var crypto={randomUUID:function(){return 'test-id'}};")
-for file in ["source/assistant.js", "source/script-import.js", "source/ui.js", "source/updater.js", "source/tts.js", "source/assistant-progress.js", "source/reference-images.js", "source/tts-batch.js", "source/model-picker.js", "source/native-editor.js", "source/narration-player.js", "source/media-studio.js", "source/auto-tags.js", "source/visual-bible.js", "source/dialogue.js", "source/video-references.js"] { c.setObject(try String(contentsOfFile:file,encoding:.utf8),forKeyedSubscript:"source" as NSString);c.evaluateScript("new Function(source)") }
+for file in ["source/assistant.js", "source/script-import.js", "source/ui.js", "source/updater.js", "source/tts.js", "source/assistant-progress.js", "source/reference-images.js", "source/tts-batch.js", "source/model-picker.js", "source/native-editor.js", "source/narration-player.js", "source/media-studio.js", "source/auto-tags.js", "source/visual-bible.js", "source/dialogue.js", "source/video-references.js", "source/excel-import.js"] { c.setObject(try String(contentsOfFile:file,encoding:.utf8),forKeyedSubscript:"source" as NSString);c.evaluateScript("new Function(source)") }
 for name in ["assistant.js","assistant-progress.js","model-picker.js","ui.js"] { c.evaluateScript(try String(contentsOfFile:"source/"+name,encoding:.utf8)) }
 let html=try String(contentsOfFile:"source/index.html",encoding:.utf8)
 precondition(html.range(of:"<script src=\"dialogue.js\"")!.lowerBound < html.range(of:"render();if(native)send('load')")!.lowerBound, "Load state only after workflow scripts are ready")
 let inline=String(html.components(separatedBy:"<script>")[1].components(separatedBy:"</script>")[0].components(separatedBy:"render();if(native)")[0])
 c.evaluateScript(inline)
-for name in ["script-import.js","updater.js","reference-images.js","narration-player.js","tts-batch.js","tts.js","media-studio.js","auto-tags.js","visual-bible.js","dialogue.js","video-references.js"] { c.evaluateScript(try String(contentsOfFile:"source/"+name,encoding:.utf8)) }
+for name in ["script-import.js","updater.js","reference-images.js","narration-player.js","tts-batch.js","tts.js","media-studio.js","auto-tags.js","visual-bible.js","dialogue.js","video-references.js","excel-import.js"] { c.evaluateScript(try String(contentsOfFile:"source/"+name,encoding:.utf8)) }
 c.evaluateScript("""
 const fixture={id:'p',title:'Test <script>',scenes:[{id:'s',time:'00:00–00:20',chapter:'Chương 1',voice:'Lời kể',image:'Prompt',video:'Prompt video',approvals:{script:true,audio:true},assets:{audio:[{selected:true,path:'/test.mp3',text:'Lời kể'}]}}],references:[],guide:{sourceMode:'script',sourceScript:'Lời kể',brief:{duration:10,audience:'Test'},steps:{storyboard:{approved:true,draft:{scenes:[],document:'',sources:[]}}}}};
 state.projects=[fixture];selected='p';page='assistant';aiViewedStage='tts';
@@ -199,5 +199,16 @@ plenxImagePending=null;applyAnglePrompt(multiScene.id);if(multiScene.previousAng
 multiScene.videoReferences[1].seconds=6;if(!buildAnglePrompt(multiScene,videoSettings(multiProject)).issue)throw Error('overlong shot plan rejected');delete multiScene.videoReferences[1].seconds;multiScene.videoReferences[0].action='';if(!buildAnglePrompt(multiScene,videoSettings(multiProject)).issue)throw Error('missing action rejected');
 const promptGuide={id:'brief',scenes:[],guide:{brief:{},steps:{}}};state.projects=[promptGuide];selected=promptGuide.id;
 if(!visualPromptBriefView(promptGuide,false).includes('Định hướng prompt ảnh'))throw Error('visual brief shown from beginning');setVisualPromptBrief('Detailed custom lighting');if(aiContext(promptGuide,'ideas').visualPromptBrief!=='Detailed custom lighting')throw Error('visual brief passed to AI from first step');
+""")
+c.evaluateScript("""
+const fakeFields={newTitle:{value:''},newAudience:{value:'Test audience'},newDialog:{close:function(){}}};document.getElementById=function(k){return fakeFields[k]||{value:'',textContent:''}};window.scrollTo=function(){};
+state.projects=[];sent=[];excelImportPending={requestId:'cancel',mode:'new'};window.nativeImported({requestId:'cancel',cancelled:true});if(state.projects.length||excelImportPending)throw Error('cancel import leaves no blank project');
+excelImportPending={requestId:'bad',mode:'new'};window.nativeImported({requestId:'bad',error:'Invalid'});if(state.projects.length)throw Error('invalid import does not create project');
+excelImportPending={requestId:'excel',mode:'new',audience:'Test'};
+const excelData={requestId:'excel',filename:'sample.xlsx',title:'Excel title',scenes:[{id:'raw',time:'00:00–00:25',chapter:'One',voice:'Exact original',image:'Image prompt',video:'Video prompt',notes:'Notes',approvals:{},assets:{}}],references:[{name:'Sources',rows:[{A:'Reference note'}]}],importInfo:{sheet:'Storyboard',headerRow:5,columns:{voice:'D'},durationSeconds:25,warnings:[]}};
+window.nativeImported(excelData);const importedProject=project();if(state.projects.length!==1||importedProject.scenes.length||importedProject.guide.steps.storyboard.approved||importedProject.guide.steps.storyboard.draft.scenes[0].video!=='Video prompt'||importedProject.references.length!==1||sent.length)throw Error('import draft preserves fields and does not generate AI/media');
+if(storyboardIssue(importedProject,importedProject.guide.steps.storyboard.draft))throw Error('imported storyboard ready for review');
+approveAI();if(importedProject.scenes[0].voice!=='Exact original'||!importedProject.scenes[0].approvals.script||importedProject.scenes[0].assets.audio)throw Error('approval leads to TTS without generating');
+const beforeImportScenes=importedProject.scenes;excelImportPending={requestId:'replace',mode:'replace',projectId:importedProject.id};window.nativeImported({...excelData,requestId:'replace'});if(importedProject.scenes!==beforeImportScenes||importedProject.guide.steps.storyboard.approved)throw Error('replacement retains active scenes until review');
 """)
 print("UI scripts parse; dashboard, overview, TTS, references, settings, escaping and workflow gate passed")

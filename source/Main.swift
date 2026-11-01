@@ -269,16 +269,25 @@ final class Studio: NSObject, NSApplicationDelegate, WKScriptMessageHandler, WKU
             if provider == "plenx" { plenxProbe.cancel() } else { elevenProbe.cancel() }
             credentials.save(provider, value: key) { [weak self] result in self?.reply(result, "nativeCredential") }
         case "import":
+            let requestID = body["requestId"] as? String ?? ""
+            let projectID = body["projectId"] as? String ?? ""
+            func imported(_ result:[String:Any]) {
+                DispatchQueue.main.async { var r=result;r["requestId"]=requestID;r["projectId"]=projectID;self.reply(r,"nativeImported") }
+            }
             let panel = NSOpenPanel(); panel.allowedFileTypes = ["xlsx"]; panel.allowsMultipleSelection = false
-            guard panel.runModal() == .OK, let file = panel.url, let script = Bundle.main.path(forResource: "import_storyboard", ofType: "py") else { return }
-            let task = Process(); task.executableURL = URL(fileURLWithPath: "/usr/bin/python3"); task.arguments = [script, file.path]
-            let pipe = Pipe(); let err = Pipe(); task.standardOutput = pipe; task.standardError = err
-            do {
-                try task.run()
-                let data = pipe.fileHandleForReading.readDataToEndOfFile(); task.waitUntilExit()
-                if task.terminationStatus == 0, let object = try? JSONSerialization.jsonObject(with: data) { reply(object, "nativeImported") }
-                else { reply(["error": "Không đọc được storyboard. Cần các cột Cảnh, Thời gian, Voice-over và prompt."]) }
-            } catch { reply(["error": error.localizedDescription]) }
+            panel.title="Nhập storyboard từ Excel";panel.prompt="Đọc storyboard"
+            guard panel.runModal() == .OK, let file = panel.url else { imported(["cancelled":true]);return }
+            guard let script = Bundle.main.path(forResource: "import_storyboard", ofType: "py") else { imported(["error":"Thiếu bộ đọc Excel trong app."]);return }
+            DispatchQueue.global(qos:.userInitiated).async {
+                let task = Process();task.executableURL=URL(fileURLWithPath:"/usr/bin/python3");task.arguments=[script,file.path]
+                let pipe=Pipe();task.standardOutput=pipe;task.standardError=FileHandle.nullDevice
+                do {
+                    try task.run();let data=pipe.fileHandleForReading.readDataToEndOfFile();task.waitUntilExit()
+                    if var object=(try? JSONSerialization.jsonObject(with:data)) as? [String:Any] {
+                        object["filename"]=file.lastPathComponent;imported(object)
+                    } else { imported(["error":"Không đọc được storyboard Excel. Hãy kiểm tra file .xlsx và các cột thời gian, lời đọc, prompt ảnh/video."]) }
+                } catch { imported(["error":"Chưa mở được bộ đọc Excel trên máy. Kiểm tra Python 3 hoặc cài Command Line Tools của macOS."]) }
+            }
         case "asset":
             let panel = NSOpenPanel(); panel.allowsMultipleSelection = false
             guard panel.runModal() == .OK, let file = panel.url, let request = body["request"] as? [String: Any] else { return }
