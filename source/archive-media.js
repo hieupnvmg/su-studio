@@ -1,6 +1,7 @@
 let archiveResults = {};
 const archiveRequests = new Map();
 let archiveCatalogOnly = false;
+let archiveIncludeWeb = true;
 
 function useSceneArchivePrompt(sid) {
     const scene = referenceScene(sid);
@@ -16,22 +17,35 @@ function archiveRequest(sid, kind, index) {
     const item = archiveResults[key]?.items?.[index];
     if (index !== undefined && (!item?.url || !item.license || item.busy || s.archiveAssets?.some(a => a.url === item.url))) return;
     const query = document.getElementById('archive-query-' + sid).value.trim();
+    if (!item && (archiveResults[key]?.busy || archiveResults[key]?.webBusy)) return;
     if (!item && !query) return toast('Nhập prompt tìm tư liệu.');
     const requestId = id();
     if (item) item.busy = true;
-    else archiveResults[key] = {requestId, busy:true};
-    archiveRequests.set(requestId, {pid:p.id, sid, key, item});
+    else {
+        s.archiveQuery = query;
+        save();
+        const previousSearch = archiveResults[key];
+        if (previousSearch) archiveRequests.delete(previousSearch.requestId);
+        archiveResults[key] = {requestId, busy:true, webBusy:archiveIncludeWeb, items:[], warnings:[]};
+    }
+    archiveRequests.set(requestId, {pid:p.id, sid, key, item, kind});
     render();
-    send(item ? 'archiveDownload' : 'archiveSearch', {requestId, query, kind:item?.kind || kind, url:item?.url});
+    send(item ? 'archiveDownload' : 'archiveSearch', {
+        requestId, query, kind:item?.kind || kind, url:item?.url, projectId:p.id,
+        includeWeb:!item && archiveIncludeWeb
+    });
 }
 
 window.nativeArchiveMedia = function(result) {
     const pending = archiveRequests.get(result.requestId);
     if (!pending) return;
-    archiveRequests.delete(result.requestId);
+    if (pending.item) archiveRequests.delete(result.requestId);
     const p = state.projects.find(project => project.id === pending.pid);
     const s = p?.scenes.find(scene => scene.id === pending.sid);
-    if (!s) return;
+    if (!s) {
+        archiveRequests.delete(result.requestId);
+        return;
+    }
     if (pending.item) {
         const {busy, thumbnail, ...metadata} = pending.item;
         pending.item.busy = false;
@@ -43,9 +57,48 @@ window.nativeArchiveMedia = function(result) {
             save();
         }
     } else if (archiveResults[pending.key]?.requestId === result.requestId) {
-        archiveResults[pending.key] = {items:result.items || [], error:result.error, warnings:result.warnings || []};
+        const search = archiveResults[pending.key];
+        search.items.push(...(result.items || []));
+        search.busy = false;
+        search.error = result.error;
+        search.warnings.push(...(result.warnings || []));
+        if (!search.webBusy) archiveRequests.delete(result.requestId);
     }
     if (project()?.id === p.id) render();
+};
+
+window.nativeArchiveWeb = function(update) {
+    const pending = archiveRequests.get(update.requestId);
+    const search = pending && archiveResults[pending.key];
+    if (!search || search.requestId !== update.requestId) return;
+    if (update.status === 'running') return;
+    search.webBusy = false;
+    if (update.status === 'completed') {
+        const httpsURL = value => {
+            try {
+                const url = new URL(value);
+                return url.protocol === 'https:' && !url.username && !url.password ? url : null;
+            } catch { return null; }
+        };
+        const seen = new Set();
+        for (const row of (update.result?.items || []).slice(0, 24)) {
+            const url = httpsURL(row.source);
+            if (!url || !row.title?.trim()) continue;
+            url.hash = '';
+            if (seen.has(url.href)) continue;
+            seen.add(url.href);
+            search.items.push({
+                title:row.title, provider:row.provider || url.hostname, source:url.href,
+                thumbnail:httpsURL(row.thumbnail)?.href || '', recordDate:row.recordDate,
+                recordType:'Nguồn web · cần đối chiếu', note:row.note, kind:pending.kind,
+                catalogued:false, web:true
+            });
+        }
+    } else if (update.message) {
+        search.warnings.push('Tìm web: ' + update.message);
+    }
+    if (!search.busy) archiveRequests.delete(update.requestId);
+    if (project()?.id === pending.pid) render();
 };
 
 function finishArchive(next) {
@@ -61,7 +114,9 @@ function archiveView() {
     return `<div class="top"><div><button onclick="go('projects')">← Tất cả dự án</button><h1>Tư liệu thật</h1>
         <p class="hint">${esc(p.title)}</p></div></div>
         <div class="ai-layout">${workflowNavigation(p, 'archive')}<div>
-        <section class="panel"><p>Tìm ảnh ở The Met và Wikimedia Commons, hoặc phim ở Prelinger Archives và Wikimedia Commons.</p>
+        <section class="panel"><p>Tìm ảnh và phim từ kho tư liệu, báo chí, bảo tàng và đài truyền hình.</p>
+        <label><input type="checkbox" ${archiveIncludeWeb ? 'checked' : ''} onchange="archiveIncludeWeb=this.checked"> Tìm thêm trên web bằng ChatGPT</label>
+        <p class="hint">Tìm web dùng tài khoản ChatGPT đã kết nối. Mở trang nguồn để xem tư liệu và kiểm tra quyền sử dụng.</p>
         <label><input type="checkbox" ${archiveCatalogOnly ? 'checked' : ''} onchange="archiveCatalogOnly=this.checked;render()"> Chỉ hiện mục có hồ sơ lưu trữ và niên đại</label>
         <p class="hint">Bộ lọc dùng hồ sơ của bộ sưu tập. Mở trang nguồn để đối chiếu nội dung với cảnh và xem điều kiện sử dụng.</p>
         <p class="hint">Tư liệu đã tải xuất hiện trong danh sách nguồn hình của cảnh trên timeline. Ảnh được dựng thành đoạn giữ hình. Máy cần FFmpeg để chuẩn bị ảnh và video WebM.</p>
@@ -73,7 +128,10 @@ function archiveView() {
 function archiveSceneView(p, s, index) {
     const search = archiveResults[p.id + ':' + s.id];
     const assets = s.archiveAssets || [];
-    const matches = (search?.items || []).map((item, i) => ({item, i}));
+    const catalogSources = new Set((search?.items || []).filter(item => !item.web).map(item => item.source));
+    const matches = (search?.items || []).map((item, i) => ({item, i}))
+        .filter(({item}) => !item.web || !catalogSources.has(item.source))
+        .sort((a, b) => Number(!!a.item.web) - Number(!!b.item.web));
     const visible = matches.filter(({item}) => !archiveCatalogOnly || item.catalogued);
     const hidden = matches.length - visible.length;
     return `<details class="panel media-scene" id="archive-scene-${s.id}" ${index === 0 ? 'open' : ''}>
@@ -83,17 +141,19 @@ function archiveSceneView(p, s, index) {
         <button onclick="useSceneArchivePrompt('${s.id}')">Dùng prompt hình của cảnh</button>
         <details><summary>Xem prompt hình của cảnh</summary><p style="white-space:pre-wrap">${esc(s.image || '')}</p></details>
         <p class="hint">Dùng tên nhân vật, địa danh, năm hoặc sự kiện trong prompt hình để tìm đúng tư liệu.</p>
-        <div class="row"><button onclick="archiveRequest('${s.id}','image')">Tìm ảnh</button>
-        <button onclick="archiveRequest('${s.id}','video')">Tìm video</button></div>
-        ${search?.busy ? '<p role="status">Đang tìm…</p>' : ''}
+        <div class="row"><button ${search?.busy || search?.webBusy ? 'disabled' : ''} onclick="archiveRequest('${s.id}','image')">Tìm ảnh</button>
+        <button ${search?.busy || search?.webBusy ? 'disabled' : ''} onclick="archiveRequest('${s.id}','video')">Tìm video</button></div>
+        ${search?.busy ? '<p role="status">Đang tìm trong các kho tư liệu…</p>' : ''}
+        ${search?.webBusy ? `<p role="status">Đang tìm thêm nguồn trên web… <button data-id="${esc(search.requestId)}" onclick="send('archiveWebCancel',{requestId:this.dataset.id})">Dừng tìm web</button></p>` : ''}
         ${search?.error ? `<p class="note">${esc(search.error)}</p>` : ''}
-        ${search && !search.busy && !search.error && !search.items.length ? '<p class="hint">Chưa có kết quả. Thử tên khác của nhân vật, tên di tích hoặc địa danh gắn với sự kiện.</p>' : ''}
+        ${search && !search.busy && !search.webBusy && !search.error && !search.items.length ? '<p class="hint">Chưa có kết quả. Thử tên khác của nhân vật, tên di tích hoặc địa danh gắn với sự kiện.</p>' : ''}
         ${(search?.warnings || []).map(warning => `<p class="hint">${esc(warning)}</p>`).join('')}
         ${hidden ? `<p class="hint">Đã ẩn ${hidden} mục thiếu hồ sơ lưu trữ và niên đại phù hợp.  <button onclick="archiveCatalogOnly=false;render()">Xem thêm kết quả cần đối chiếu</button></p>` : ''}
         <div class="reference-gallery">${visible.map(({item, i}) => `<article class="reference-image-card">
             ${item.thumbnail ? `<img src="${esc(item.thumbnail)}" alt="" loading="lazy" style="width:100%;max-height:160px;object-fit:contain">` : ''}
             <div class="reference-image-caption"><b>${esc(item.title)}</b>
             <span class="hint">${esc([item.provider, item.recordType, item.recordDate].filter(Boolean).join(" · "))}</span>
+            ${item.note ? `<span class="hint">${esc(item.note)}</span>` : ''}
             <span class="hint">${esc(item.license || 'Xem giấy phép trên trang nguồn')} · ${esc(item.artist)}</span>
             <div class="row"><button data-url="${esc(item.source)}" onclick="send('openLink',{url:this.dataset.url})">Trang nguồn ↗</button>
             <button ${item.busy || assets.some(a => a.url === item.url) || !item.license || !item.url ? 'disabled' : ''} onclick="archiveRequest('${s.id}',null,${i})">${item.busy ? 'Đang chuẩn bị…' : assets.some(a => a.url === item.url) ? 'Đã tải' : !item.url || !item.license ? 'Xem tại kho' : 'Tải vào cảnh'}</button></div>

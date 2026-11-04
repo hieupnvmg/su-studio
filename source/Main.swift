@@ -47,7 +47,9 @@ final class Studio: NSObject, NSApplicationDelegate, WKScriptMessageHandler, WKU
         config.userContentController.add(self, name: "native")
         config.setURLSchemeHandler(StudioImageScheme(root: root), forURLScheme: "studio-image")
         codex.onUpdate = { [weak self] update in self?.reply(update, "nativeCodex") }
-        codex.onAssistant = { [weak self] update in self?.reply(update, "nativeAssistant") }
+        codex.onAssistant = { [weak self] update in
+            self?.reply(update, update["stage"] as? String == "archive_web" ? "nativeArchiveWeb" : "nativeAssistant")
+        }
         codex.onModels = { [weak self] update in self?.reply(update, "nativeModels") }
         updater.onUpdate = { [weak self] update in self?.reply(update, "nativeUpdate") }
         narration.onUpdate = { [weak self] update in self?.reply(update, "nativeNarration") }
@@ -209,12 +211,18 @@ final class Studio: NSObject, NSApplicationDelegate, WKScriptMessageHandler, WKU
             if let raw = body["url"] as? String, let url = URL(string: raw), ["https", "http"].contains(url.scheme?.lowercased() ?? "") { NSWorkspace.shared.open(url) }
         case "assistantGenerate": codex.generateAssistant(body)
         case "assistantCancel": codex.interruptAssistant()
+        case "archiveWebCancel":
+            if let requestID = body["requestId"] as? String { codex.interruptAssistant(requestID: requestID) }
         case "archiveSearch", "archiveDownload":
             let requestID = body["requestId"] as? String ?? ""
             let kind = body["kind"] as? String == "video" ? "video" : "image"
             let query = String((body["query"] as? String ?? "").prefix(300))
             let url = body["url"] as? String ?? ""
             let archiveRoot = root
+            if action == "archiveSearch", body["includeWeb"] as? Bool == true {
+                codex.generateAssistant(["requestId": requestID, "projectId": body["projectId"] as? String ?? "",
+                    "stage": "archive_web", "context": ["query": query, "kind": kind]])
+            }
             Task.detached { [weak self] in
                 var result: [String: Any]
                 do {

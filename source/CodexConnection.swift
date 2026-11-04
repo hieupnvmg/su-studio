@@ -18,6 +18,7 @@ final class CodexConnection {
         var threadID: String?
         var turnID: String?
         var finalText = ""
+        var searchedWeb = false
         var model = ""
         var effort = ""
     }
@@ -296,7 +297,7 @@ final class CodexConnection {
         if ["missing", "error"].contains(snapshot["status"] as? String ?? ""), process == nil {
             finishAssistant(status: "error", message: snapshot["message"] as? String ?? "Chưa kết nối được Codex.")
         }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1800) { [weak self] in
+        DispatchQueue.main.asyncAfter(deadline: .now() + (stage == "archive_web" ? 180 : 1800)) { [weak self] in
             guard let self = self, self.assistantJob?.requestID == requestID else { return }
             self.interruptAssistant()
         }
@@ -305,8 +306,9 @@ final class CodexConnection {
         let workspace = home.deletingLastPathComponent().appendingPathComponent("assistant-workspace", isDirectory: true)
         try? FileManager.default.createDirectory(at: workspace, withIntermediateDirectories: true)
         emitAssistant("running", stage == "research" ? "AI đang đối chiếu tư liệu và chuẩn bị bản nghiên cứu…" : "AI đang chuẩn bị gợi ý cho bước này…")
-        let config: [String: Any] = ["web_search": stage == "research" ? "live" : "disabled", "features.shell_tool": false, "features.multi_agent": false]
-        var threadParams: [String: Any] = ["cwd": workspace.path, "sandbox": "read-only", "approvalPolicy": "never", "ephemeral": true, "config": config, "baseInstructions": AssistantPlan.instructions]
+        let archiveSearch = stage == "archive_web"
+        let config: [String: Any] = ["web_search": (archiveSearch || stage == "research") ? "live" : "disabled", "features.shell_tool": false, "features.multi_agent": false]
+        var threadParams: [String: Any] = ["cwd": workspace.path, "sandbox": "read-only", "approvalPolicy": "never", "ephemeral": true, "config": config, "baseInstructions": archiveSearch ? AssistantPlan.archiveInstructions : AssistantPlan.instructions]
         if let model = assistantJob?.model, !model.isEmpty { threadParams["model"] = model }
         request("thread/start", threadParams) { [weak self] response in
             guard let self = self else { return }
@@ -320,7 +322,7 @@ final class CodexConnection {
             self.assistantJob?.threadID = threadID
             if let actual = result["model"] as? String { self.assistantJob?.model = actual }
             if self.assistantJob?.effort.isEmpty == true, let effort = result["reasoningEffort"] as? String { self.assistantJob?.effort = effort }
-            var turnParams: [String: Any] = ["threadId": threadID, "input": [["type": "text", "text": AssistantPlan.prompt(stage: stage, context: context)]], "outputSchema": AssistantPlan.schema, "summary": "concise", "sandboxPolicy": ["type": "readOnly", "networkAccess": false], "approvalPolicy": "never"]
+            var turnParams: [String: Any] = ["threadId": threadID, "input": [["type": "text", "text": AssistantPlan.prompt(stage: stage, context: context)]], "outputSchema": archiveSearch ? AssistantPlan.archiveSchema : AssistantPlan.schema, "summary": "concise", "sandboxPolicy": ["type": "readOnly", "networkAccess": false], "approvalPolicy": "never"]
             if let model = self.assistantJob?.model, !model.isEmpty { turnParams["model"] = model }
             if let effort = self.assistantJob?.effort, !effort.isEmpty { turnParams["effort"] = effort }
             self.request("turn/start", turnParams) { [weak self] response in
@@ -340,6 +342,9 @@ final class CodexConnection {
         guard let job = assistantJob, let threadID = job.threadID, params["threadId"] as? String == threadID else { return }
         assistantProgress?.received(method, params)
         if method == "turn/started", let turn = params["turn"] as? [String: Any] { assistantJob?.turnID = turn["id"] as? String }
+        if method == "item/completed", let item = params["item"] as? [String: Any], item["type"] as? String == "webSearch" {
+            assistantJob?.searchedWeb = true
+        }
         if method == "item/started", let item = params["item"] as? [String: Any], item["type"] as? String == "webSearch" {
             emitAssistant("running", "AI đang tìm và đối chiếu nguồn trên web…")
         }
@@ -351,8 +356,12 @@ final class CodexConnection {
         guard method == "turn/completed", let turn = params["turn"] as? [String: Any] else { return }
         if let expected = job.turnID, let actual = turn["id"] as? String, expected != actual { return }
         if turn["status"] as? String == "completed" {
+            if job.stage == "archive_web", !job.searchedWeb {
+                finishAssistant(status: "error", message: "Phiên ChatGPT chưa chạy được tìm kiếm web. Hãy thử lại.")
+                return
+            }
             assistantProgress?.phase = "validating"
-            if let data = assistantJob?.finalText.data(using: .utf8), let result = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any], AssistantPlan.isValid(result, stage: job.stage) {
+            if let data = assistantJob?.finalText.data(using: .utf8), let result = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any], (job.stage == "archive_web" ? result["items"] is [[String: String]] : AssistantPlan.isValid(result, stage: job.stage)) {
                 finishAssistant(status: "completed", message: "Bản nháp đã sẵn sàng để bạn xem và duyệt.", result: result)
             } else { finishAssistant(status: "error", message: "AI trả về nội dung chưa đúng cấu trúc. Bản đã duyệt vẫn được giữ; hãy thử tạo lại.") }
         } else { finishAssistant(status: "error", message: turn["status"] as? String == "interrupted" ? "Đã dừng yêu cầu AI. Bạn có thể tạo lại khi sẵn sàng." : "AI chưa hoàn tất. Có thể kết nối hoặc hạn mức đang bị giới hạn; hãy thử lại.") }
@@ -376,8 +385,8 @@ final class CodexConnection {
         assistantProgress = nil; pingPending = false
         if ready, let threadID = threadID { request("thread/unsubscribe", ["threadId": threadID]) { _ in } }
     }
-    func interruptAssistant() {
-        guard let job = assistantJob else { return }
+    func interruptAssistant(requestID: String? = nil) {
+        guard let job = assistantJob, requestID == nil || job.requestID == requestID else { return }
         if let threadID = job.threadID, let turnID = job.turnID { request("turn/interrupt", ["threadId": threadID, "turnId": turnID]) { _ in } }
         finishAssistant(status: "interrupted", message: "Đã dừng yêu cầu. Nội dung đã duyệt vẫn được giữ.")
     }
