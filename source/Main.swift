@@ -1,3 +1,4 @@
+import UniformTypeIdentifiers
 import Cocoa
 import WebKit
 import Security
@@ -48,7 +49,22 @@ final class Studio: NSObject, NSApplicationDelegate, WKScriptMessageHandler, WKU
         config.setURLSchemeHandler(StudioImageScheme(root: root), forURLScheme: "studio-image")
         codex.onUpdate = { [weak self] update in self?.reply(update, "nativeCodex") }
         codex.onAssistant = { [weak self] update in
-            self?.reply(update, update["stage"] as? String == "archive_web" ? "nativeArchiveWeb" : "nativeAssistant")
+            guard update["stage"] as? String == "archive_web" else {
+                self?.reply(update, "nativeAssistant")
+                return
+            }
+            guard update["status"] as? String == "completed",
+                  let items = (update["result"] as? [String: Any])?["items"] as? [[String: String]] else {
+                self?.reply(update, "nativeArchiveWeb")
+                return
+            }
+            let kind = update["kind"] as? String ?? "image"
+            Task { [weak self] in
+                let checked = await ArchiveMedia.detectWebFiles(items, kind: kind)
+                var result = update
+                result["result"] = ["items": checked]
+                self?.reply(result, "nativeArchiveWeb")
+            }
         }
         codex.onModels = { [weak self] update in self?.reply(update, "nativeModels") }
         updater.onUpdate = { [weak self] update in self?.reply(update, "nativeUpdate") }
@@ -213,12 +229,24 @@ final class Studio: NSObject, NSApplicationDelegate, WKScriptMessageHandler, WKU
         case "assistantCancel": codex.interruptAssistant()
         case "archiveWebCancel":
             if let requestID = body["requestId"] as? String { codex.interruptAssistant(requestID: requestID) }
-        case "archiveSearch", "archiveDownload":
+        case "archiveSearch", "archiveDownload", "archiveImport":
             let requestID = body["requestId"] as? String ?? ""
             let kind = body["kind"] as? String == "video" ? "video" : "image"
             let query = String((body["query"] as? String ?? "").prefix(300))
             let url = body["url"] as? String ?? ""
             let archiveRoot = root
+            let fromWeb = body["web"] as? Bool == true
+            var localFile: URL?
+            if action == "archiveImport" {
+                let panel = NSOpenPanel()
+                panel.allowedContentTypes = kind == "image" ? [.image] : [.movie, .mpeg4Movie]
+                guard panel.runModal() == .OK, let file = panel.url else {
+                    reply(["requestId": requestID, "cancelled": true], "nativeArchiveMedia")
+                    return
+                }
+                localFile = file
+            }
+            let importURL = localFile
             if action == "archiveSearch", body["includeWeb"] as? Bool == true {
                 codex.generateAssistant(["requestId": requestID, "projectId": body["projectId"] as? String ?? "",
                     "stage": "archive_web", "context": ["query": query, "kind": kind]])
@@ -228,8 +256,10 @@ final class Studio: NSObject, NSApplicationDelegate, WKScriptMessageHandler, WKU
                 do {
                     if action == "archiveSearch" {
                         result = await ArchiveMedia.searchAll(query, kind: kind)
+                    } else if let importURL = importURL {
+                        result = try ArchiveMedia.importFile(importURL, kind: kind, root: archiveRoot)
                     } else {
-                        result = try await ArchiveMedia.download(url, kind: kind, root: archiveRoot)
+                        result = try await ArchiveMedia.download(url, kind: kind, root: archiveRoot, web: fromWeb)
                     }
                 } catch {
                     result = ["error": error.localizedDescription]

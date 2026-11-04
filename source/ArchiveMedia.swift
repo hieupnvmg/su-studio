@@ -290,25 +290,134 @@ enum ArchiveMedia {
         return host.range(of: #"^(?:ia|dn)[0-9]+(?:\.[a-z]+)?\.archive\.org$"#, options: .regularExpression) != nil
     }
 
-    static func download(_ raw: String, kind: String, root: URL) async throws -> [String: Any] {
-        guard let url = URL(string: raw), allowedMediaURL(url),
-              ["image", "video"].contains(kind) else { throw error("Đường dẫn tệp ngoài các kho được hỗ trợ.") }
+    // Only fetch from publishers and media hosts supported by the native importer.
+    private static func allowedWebURL(_ url: URL) -> Bool {
+        guard url.scheme == "https", url.user == nil, url.password == nil,
+              url.port == nil || url.port == 443, let host = url.host?.lowercased() else { return false }
+        let domains = ["vov.vn", "vovmedia.vn", "tuoitre.vn", "tuoitre.com.vn", "vtv.vn", "vtvcdn.net",
+                       "vietnamnet.vn", "vnncdn.net", "baochinhphu.vn", "mediacdn.vn", "sggp.org.vn",
+                       "nhandan.vn", "vnanet.vn",
+                       "time.com", "wikimedia.org", "vnexpress.net", "qdnd.vn"]
+        return allowedMediaURL(url) || domains.contains { host == $0 || host.hasSuffix("." + $0) }
+    }
+
+    private final class WebRedirects: NSObject, URLSessionTaskDelegate {
+        func urlSession(_ session: URLSession, task: URLSessionTask,
+                        willPerformHTTPRedirection response: HTTPURLResponse, newRequest request: URLRequest,
+                        completionHandler: @escaping (URLRequest?) -> Void) {
+            completionHandler(request.url.map(ArchiveMedia.allowedWebURL) == true ? request : nil)
+        }
+    }
+
+    static func detectWebFiles(_ items: [[String: String]], kind: String) async -> [[String: String]] {
+        await withTaskGroup(of: (Int, [String: String]).self) { group in
+            for (index, item) in items.prefix(24).enumerated() {
+                group.addTask {
+                    var result = item
+                    var direct = await webMedia(item["mediaURL"] ?? "", kind: kind)
+                    if direct == nil, kind == "image", let preview = item["thumbnail"], preview != item["mediaURL"] {
+                        direct = await webMedia(preview, kind: kind)
+                    }
+                    if direct == nil, let source = item["source"] {
+                        direct = await pageMedia(source, kind: kind)
+                        if let direct, kind == "image" {
+                            result["thumbnail"] = direct
+                            result["note"] = [item["note"], "Tệp phát hiện là ảnh đại diện của trang nguồn."].compactMap { $0 }.joined(separator: " ")
+                        }
+                    }
+                    result["mediaURL"] = direct ?? ""
+                    return (index, result)
+                }
+            }
+            var checked: [(Int, [String: String])] = []
+            for await item in group { checked.append(item) }
+            return checked.sorted { $0.0 < $1.0 }.map { $0.1 }
+        }
+    }
+
+    private static func pageMedia(_ raw: String, kind: String) async -> String? {
+        guard let url = URL(string: raw), allowedWebURL(url) else { return nil }
+        let session = URLSession(configuration: .ephemeral, delegate: WebRedirects(), delegateQueue: nil)
+        defer { session.invalidateAndCancel() }
+        let request = URLRequest(url: url, timeoutInterval: 8)
+        guard let (bytes, response) = try? await session.bytes(for: request),
+              let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode),
+              http.mimeType == "text/html", let page = http.url else { return nil }
+        var data = Data()
+        do {
+            for try await byte in bytes {
+                data.append(byte)
+                if data.count >= 128 * 1024 { break }
+            }
+        } catch { return nil }
+        let html = String(decoding: data, as: UTF8.self)
+        let tags = try! NSRegularExpression(pattern: #"<meta\s[^>]*>"#, options: .caseInsensitive)
+        let attrs = try! NSRegularExpression(pattern: #"([\w:-]+)\s*=\s*["']([^"']*)["']"#)
+        let properties = kind == "image" ? ["og:image", "og:image:secure_url"] : ["og:video", "og:video:url", "og:video:secure_url"]
+        for tagMatch in tags.matches(in: html, range: NSRange(html.startIndex..., in: html)) {
+            guard let range = Range(tagMatch.range, in: html) else { continue }
+            let tag = String(html[range])
+            var fields: [String: String] = [:]
+            for match in attrs.matches(in: tag, range: NSRange(tag.startIndex..., in: tag)) {
+                guard let key = Range(match.range(at: 1), in: tag), let value = Range(match.range(at: 2), in: tag) else { continue }
+                fields[String(tag[key]).lowercased()] = String(tag[value])
+            }
+            guard properties.contains(fields["property"] ?? fields["name"] ?? ""),
+                  let content = fields["content"],
+                  let file = URL(string: content.replacingOccurrences(of: "&amp;", with: "&"), relativeTo: page)?.absoluteURL else { continue }
+            if let verified = await webMedia(file.absoluteString, kind: kind) { return verified }
+        }
+        return nil
+    }
+
+    static func webMedia(_ raw: String, kind: String) async -> String? {
+        guard let url = URL(string: raw), allowedWebURL(url) else { return nil }
+        var request = URLRequest(url: url, timeoutInterval: 8)
+        request.httpMethod = "HEAD"
+        let session = URLSession(configuration: .ephemeral, delegate: WebRedirects(), delegateQueue: nil)
+        defer { session.finishTasksAndInvalidate() }
+        guard let (_, response) = try? await session.data(for: request),
+              let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode),
+              http.expectedContentLength <= 250_000_000,
+              let mime = http.mimeType?.lowercased(), supportedWebMIME(mime, kind: kind) else { return nil }
+        return url.absoluteString
+    }
+
+    private static func supportedWebMIME(_ mime: String, kind: String) -> Bool {
+        if kind == "image" { return ["image/jpeg", "image/png", "image/webp", "image/gif", "image/avif", "image/tiff"].contains(mime) }
+        return ["video/mp4", "video/quicktime", "video/webm", "video/ogg", "video/x-m4v"].contains(mime)
+    }
+
+    static func download(_ raw: String, kind: String, root: URL, web: Bool = false) async throws -> [String: Any] {
+        let allowed = web ? allowedWebURL : allowedMediaURL
+        guard let url = URL(string: raw), allowed(url),
+              ["image", "video"].contains(kind) else { throw error("Đường dẫn tệp ngoài các nguồn được hỗ trợ.") }
         var request = URLRequest(url: url, timeoutInterval: 60)
-        request.setValue("SuStudio/0.13 (https://github.com/hieupnvmg/su-studio)", forHTTPHeaderField: "User-Agent")
-        let (temporary, response) = try await URLSession.shared.download(for: request)
+        request.setValue("SuStudio/0.14 (https://github.com/hieupnvmg/su-studio)", forHTTPHeaderField: "User-Agent")
+        let session = web ? URLSession(configuration: .ephemeral, delegate: WebRedirects(), delegateQueue: nil) : .shared
+        defer { if web { session.finishTasksAndInvalidate() } }
+        let (temporary, response) = try await session.download(for: request)
         defer { try? FileManager.default.removeItem(at: temporary) }
         guard let http = response as? HTTPURLResponse, http.statusCode == 200,
-              http.url.map(allowedMediaURL) == true,
+              http.url.map(allowed) == true,
+              !web || supportedWebMIME(http.mimeType ?? "", kind: kind),
               (try temporary.resourceValues(forKeys: [.fileSizeKey]).fileSize ?? Int.max) <= 250_000_000 else {
             throw error("Không tải được tệp tư liệu hoặc tệp vượt 250 MB.")
+        }
+        return try importFile(temporary, kind: kind, root: root, fileExtension: http.url?.pathExtension ?? url.pathExtension)
+    }
+
+    static func importFile(_ file: URL, kind: String, root: URL, fileExtension: String? = nil) throws -> [String: Any] {
+        guard (try file.resourceValues(forKeys: [.fileSizeKey]).fileSize ?? Int.max) <= 250_000_000 else {
+            throw error("Tệp tư liệu vượt 250 MB.")
         }
         let fm = FileManager.default
         let folder = root.appendingPathComponent("assets", isDirectory: true)
         try fm.createDirectory(at: folder, withIntermediateDirectories: true)
-        let ext = url.pathExtension.lowercased()
+        let ext = (fileExtension ?? file.pathExtension).lowercased()
         let safeExtension = ext.range(of: "^[a-z0-9]{1,8}$", options: .regularExpression) != nil ? ext : "media"
         let original = folder.appendingPathComponent(UUID().uuidString).appendingPathExtension(safeExtension)
-        try fm.copyItem(at: temporary, to: original)
+        try fm.copyItem(at: file, to: original)
         do {
             if kind == "image", CGImageSourceCreateWithURL(original as CFURL, nil) == nil {
                 throw error("Định dạng ảnh này không đọc được trên máy.")

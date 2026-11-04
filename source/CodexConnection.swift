@@ -19,6 +19,7 @@ final class CodexConnection {
         var turnID: String?
         var finalText = ""
         var searchedWeb = false
+        var archiveKind = ""
         var model = ""
         var effort = ""
     }
@@ -278,6 +279,7 @@ final class CodexConnection {
             }
         }
         assistantJob = AssistantJob(requestID: requestID, projectID: projectID, stage: stage)
+        if stage == "archive_web" { assistantJob?.archiveKind = context["kind"] as? String ?? "image" }
         assistantJob?.model = selectedModel; assistantJob?.effort = selectedEffort
         assistantProgress = AssistantProgress()
         beginProgressTimer()
@@ -373,6 +375,7 @@ final class CodexConnection {
             lastAssistantProgress = message
         }
         var update: [String: Any] = ["requestId": job.requestID, "projectId": job.projectID, "stage": job.stage, "status": status, "message": message, "model": job.model, "effort": job.effort]
+        if job.stage == "archive_web" { update["kind"] = job.archiveKind }
         if let result = result { update["result"] = result }
         if let progress = assistantProgress { update["progress"] = progress.snapshot() }
         onAssistant?(update)
