@@ -7,45 +7,108 @@ enum ArchiveMedia {
         NSError(domain: "ArchiveMedia", code: 1, userInfo: [NSLocalizedDescriptionKey: message])
     }
 
-    static func search(_ query: String, kind: String) async throws -> [[String: Any]] {
-        let name = searchName(query)
-        if isMaiHacDe(name) {
-            async let royalName = searchFiles("Mai Hắc Đế", kind: kind)
-            async let birthName = searchFiles("Mai Thúc Loan", kind: kind)
-            let results = try await royalName + birthName
-            var seen = Set<String>()
-            return results.filter {
-                let title = $0["title"] as? String ?? ""
-                guard let url = $0["url"] as? String else { return false }
-                return matchesMaiHacDe(title) && seen.insert(url).inserted
-            }
-        }
-        return try await searchFiles(name, kind: kind)
+    private struct SearchSubject {
+        let names: [String]
+        let isPerson: Bool
     }
 
-    private static func searchName(_ query: String) -> String {
+    static func search(_ query: String, kind: String) async throws -> [[String: Any]] {
+        try await searchCommons(subject(for: query), kind: kind)
+    }
+
+    private static func normalized(_ value: String) -> String {
+        value.folding(options: [.caseInsensitive, .diacriticInsensitive], locale: nil)
+            .replacingOccurrences(of: "đ", with: "d")
+            .split { !$0.isLetter && !$0.isNumber }
+            .joined(separator: " ")
+    }
+
+    private static func subject(for query: String) async -> SearchSubject {
         let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
         let name = trimmed.replacingOccurrences(
-            of: #"^(?:nhà\s+vua|nha\s+vua|vua|hoàng đế|quốc vương|king|emperor)\s+"#,
+            of: #"^(?:(?:nhà\s+)?vua|(?:nha\s+)?vua|hoàng đế|hoang de|quốc vương|quoc vuong|king|emperor)\s+"#,
             with: "", options: [.regularExpression, .caseInsensitive]
         )
-        return name.isEmpty ? trimmed : name
+        let fallback = SearchSubject(names: [name], isPerson: name != trimmed)
+        let key = normalized(name)
+        guard key.split(separator: " ").count >= 2,
+              let listing = try? await wikidata([
+                "action": "wbsearchentities", "search": name, "language": "vi", "uselang": "vi", "limit": "8"
+              ]) else { return fallback }
+        let candidates = (listing["search"] as? [[String: Any]] ?? []).compactMap { item -> String? in
+            let match = (item["match"] as? [String: Any])?["text"] as? String ?? ""
+            let label = item["label"] as? String ?? ""
+            return [match, label].contains { normalized($0) == key } ? item["id"] as? String : nil
+        }
+        guard !candidates.isEmpty,
+              let records = try? await wikidata([
+                "action": "wbgetentities", "ids": candidates.joined(separator: "|"),
+                "props": "labels|aliases|claims", "languages": "vi|en"
+              ]) else { return fallback }
+        let entities = records["entities"] as? [String: [String: Any]] ?? [:]
+        let people = entities.values.filter { entity in
+            let claims = entity["claims"] as? [String: [[String: Any]]] ?? [:]
+            return claims["P31", default: []].contains { claim in
+                let snak = claim["mainsnak"] as? [String: Any]
+                let data = snak?["datavalue"] as? [String: Any]
+                return (data?["value"] as? [String: Any])?["id"] as? String == "Q5"
+            }
+        }
+        guard people.count == 1, let person = people.first else { return fallback }
+        let labels = person["labels"] as? [String: [String: String]] ?? [:]
+        let aliases = person["aliases"] as? [String: [[String: String]]] ?? [:]
+        let alternatives = [labels["vi"]?["value"]].compactMap { $0 }
+            + aliases["vi", default: []].compactMap { $0["value"] }
+            + [labels["en"]?["value"]].compactMap { $0 }
+        var seen = Set<String>()
+        let names = (alternatives.filter { normalized($0) == key } + [name] + alternatives)
+            .filter { normalized($0).split(separator: " ").count >= 2 && seen.insert(normalized($0)).inserted }
+        return SearchSubject(names: Array(names.prefix(3)), isPerson: true)
     }
 
-    private static func isMaiHacDe(_ name: String) -> Bool {
-        ["mai hắc đế", "mai thúc loan", "mai hac de", "mai thuc loan"].contains(name.lowercased())
+    private static func wikidata(_ parameters: [String: String]) async throws -> [String: Any] {
+        try await json("https://www.wikidata.org/w/api.php", parameters: (parameters.merging(["format": "json"]) { old, _ in old })
+            .map { URLQueryItem(name: $0.key, value: $0.value) }, timeout: 4)
     }
 
-    private static func matchesMaiHacDe(_ title: String) -> Bool {
-        let normalized = title.folding(options: [.caseInsensitive, .diacriticInsensitive], locale: nil)
-            .replacingOccurrences(of: "đ", with: "d")
-        guard normalized.contains("mai hac de") || normalized.contains("mai thuc loan") else { return false }
-        return !isStreet(title)
+    private static func relevant(_ item: [String: Any], to subject: SearchSubject) -> Bool {
+        guard subject.isPerson else { return true }
+        let title = normalized(item["title"] as? String ?? "")
+        let context = (item["searchContext"] as? String ?? "").split(separator: "|").map { normalized(String($0)) }
+        let names = subject.names.map(normalized).filter { !$0.isEmpty }
+        let location = #"\b(?:duong(?: pho)?|pho|ngo|dai lo|nga tu|nga ba|giao lo|street|road|avenue|boulevard)\b"#
+        for name in names {
+            let key = "\\b" + NSRegularExpression.escapedPattern(for: name) + "\\b"
+            let namedLocation = location + " " + key + "|" + key + " " + location
+            if ([title] + context).contains(where: { $0.range(of: namedLocation, options: .regularExpression) != nil }) {
+                return false
+            }
+            // Some street photos list only the name followed by a street address.
+            if title.range(of: key + #" (?:phuong|quan|ward|district) \d+\b"#,
+                           options: .regularExpression) != nil { return false }
+        }
+        return names.contains { name in
+            ([title] + context).contains { (" " + $0 + " ").contains(" " + name + " ") }
+        }
     }
 
-    private static func isStreet(_ title: String) -> Bool {
-        title.range(of: #"\b(?:đường|phố|street|road|avenue|mể cốc|thái phiên)\b"#,
-                    options: [.regularExpression, .caseInsensitive]) != nil
+    private static func searchCommons(_ subject: SearchSubject, kind: String) async throws -> [[String: Any]] {
+        let batches = await withTaskGroup(of: (Int, [[String: Any]]?).self) { group in
+            for (index, name) in subject.names.enumerated() {
+                group.addTask { (index, try? await searchFiles(name, kind: kind)) }
+            }
+            var batches: [(Int, [[String: Any]])] = []
+            for await (index, items) in group {
+                if let items { batches.append((index, items)) }
+            }
+            return batches
+        }
+        guard !batches.isEmpty else { throw error("Không tìm được tư liệu từ Wikimedia Commons. Thử lại sau.") }
+        var seen = Set<String>()
+        return batches.sorted { $0.0 < $1.0 }.flatMap { $0.1 }.filter {
+            guard let url = $0["url"] as? String else { return false }
+            return relevant($0, to: subject) && seen.insert(url).inserted
+        }
     }
 
     private static func searchFiles(_ query: String, kind: String) async throws -> [[String: Any]] {
@@ -76,6 +139,7 @@ enum ArchiveMedia {
             let artist = value("Artist").replacingOccurrences(of: "<[^>]+>", with: "", options: .regularExpression)
             let synthetic = markedSynthetic([title, value("Categories"), value("ImageDescription")].joined(separator: " "))
             return ["title": String(title.dropFirst(5)), "url": media, "source": source,
+                    "searchContext": value("Categories"),
                     "provider": "Wikimedia Commons", "catalogued": false, "recordDate": value("DateTimeOriginal"),
                     "recordType": synthetic ? "Hồ sơ có nhãn AI hoặc phục dựng" : "Tệp cộng đồng · cần đối chiếu",
                     "thumbnail": info["thumburl"] as? String ?? "", "kind": kind,
@@ -89,10 +153,11 @@ enum ArchiveMedia {
     }
 
     static func searchAll(_ query: String, kind: String) async -> [String: Any] {
-        let name = searchName(query)
+        let subject = await subject(for: query)
+        let name = subject.names[0]
         let archive = kind == "video" ? "Prelinger Archives" : "The Met"
         async let commonsResult = searchProvider("Wikimedia Commons") {
-            try await search(query, kind: kind)
+            try await searchCommons(subject, kind: kind)
         }
         async let archiveResult = searchProvider(archive) {
             if kind == "video" { return try await searchPrelinger(name) }
@@ -100,8 +165,10 @@ enum ArchiveMedia {
         }
         let results = await [archiveResult, commonsResult]
         let items = results.flatMap { $0.items }
-        let relevant = isMaiHacDe(name) ? items.filter { matchesMaiHacDe($0["title"] as? String ?? "") } : items
-        return ["items": relevant, "warnings": results.compactMap { $0.warning }]
+        let matching = items.filter { relevant($0, to: subject) }.map { item in
+            item.filter { $0.key != "searchContext" }
+        }
+        return ["items": matching, "warnings": results.compactMap { $0.warning }]
     }
 
     private static func searchProvider(
@@ -111,10 +178,10 @@ enum ArchiveMedia {
         catch { return ([], "Chưa kết nối được với " + name + ".") }
     }
 
-    private static func json(_ endpoint: String, parameters: [URLQueryItem] = []) async throws -> [String: Any] {
+    private static func json(_ endpoint: String, parameters: [URLQueryItem] = [], timeout: TimeInterval = 12) async throws -> [String: Any] {
         var url = URLComponents(string: endpoint)!
         if !parameters.isEmpty { url.queryItems = parameters }
-        var request = URLRequest(url: url.url!, timeoutInterval: 12)
+        var request = URLRequest(url: url.url!, timeoutInterval: timeout)
         request.setValue("SuStudio/0.14 (https://github.com/hieupnvmg/su-studio)", forHTTPHeaderField: "User-Agent")
         let (data, response) = try await URLSession.shared.data(for: request)
         guard (response as? HTTPURLResponse)?.statusCode == 200,

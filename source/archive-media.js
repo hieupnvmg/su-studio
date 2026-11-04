@@ -87,7 +87,7 @@ function archiveSceneView(p, s, index) {
         <button onclick="archiveRequest('${s.id}','video')">Tìm video</button></div>
         ${search?.busy ? '<p role="status">Đang tìm…</p>' : ''}
         ${search?.error ? `<p class="note">${esc(search.error)}</p>` : ''}
-        ${search && !search.busy && !search.error && !search.items.length ? '<p class="hint">Chưa có kết quả. Thử tên gọi khác hoặc tên di tích, ví dụ Mai Thúc Loan hoặc Mai Hac De temple.</p>' : ''}
+        ${search && !search.busy && !search.error && !search.items.length ? '<p class="hint">Chưa có kết quả. Thử tên khác của nhân vật, tên di tích hoặc địa danh gắn với sự kiện.</p>' : ''}
         ${(search?.warnings || []).map(warning => `<p class="hint">${esc(warning)}</p>`).join('')}
         ${hidden ? `<p class="hint">Đã ẩn ${hidden} mục thiếu hồ sơ lưu trữ và niên đại phù hợp.  <button onclick="archiveCatalogOnly=false;render()">Xem thêm kết quả cần đối chiếu</button></p>` : ''}
         <div class="reference-gallery">${visible.map(({item, i}) => `<article class="reference-image-card">
