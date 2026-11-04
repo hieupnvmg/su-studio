@@ -1,5 +1,6 @@
 let archiveResults = {};
 const archiveRequests = new Map();
+let archiveCatalogOnly = true;
 
 function useSceneArchivePrompt(sid) {
     const scene = referenceScene(sid);
@@ -13,7 +14,7 @@ function archiveRequest(sid, kind, index) {
     if (!s) return;
     const key = p.id + ':' + sid;
     const item = archiveResults[key]?.items?.[index];
-    if (index !== undefined && (!item?.license || item.busy || s.archiveAssets?.some(a => a.url === item.url))) return;
+    if (index !== undefined && (!item?.url || !item.license || item.busy || s.archiveAssets?.some(a => a.url === item.url))) return;
     const query = document.getElementById('archive-query-' + sid).value.trim();
     if (!item && !query) return toast('Nhập prompt tìm tư liệu.');
     const requestId = id();
@@ -42,7 +43,7 @@ window.nativeArchiveMedia = function(result) {
             save();
         }
     } else if (archiveResults[pending.key]?.requestId === result.requestId) {
-        archiveResults[pending.key] = {items:result.items || [], error:result.error};
+        archiveResults[pending.key] = {items:result.items || [], error:result.error, warnings:result.warnings || []};
     }
     if (project()?.id === p.id) render();
 };
@@ -60,7 +61,9 @@ function archiveView() {
     return `<div class="top"><div><button onclick="go('projects')">← Tất cả dự án</button><h1>Tư liệu thật</h1>
         <p class="hint">${esc(p.title)}</p></div></div>
         <div class="ai-layout">${workflowNavigation(p, 'archive')}<div>
-        <section class="panel"><p>Tìm ảnh và video trên Wikimedia Commons. Mở trang nguồn để đối chiếu nội dung, niên đại và giấy phép.</p>
+        <section class="panel"><p>Tìm ảnh ở The Met và Wikimedia Commons, hoặc phim ở Prelinger Archives và Wikimedia Commons.</p>
+        <label><input type="checkbox" ${archiveCatalogOnly ? 'checked' : ''} onchange="archiveCatalogOnly=this.checked;render()"> Chỉ hiện mục có hồ sơ lưu trữ và niên đại</label>
+        <p class="hint">Bộ lọc dùng hồ sơ của bộ sưu tập. Mở trang nguồn để đối chiếu nội dung với cảnh và xem điều kiện sử dụng.</p>
         <p class="hint">Tư liệu đã tải xuất hiện trong danh sách nguồn hình của cảnh trên timeline. Ảnh được dựng thành đoạn giữ hình. Máy cần FFmpeg để chuẩn bị ảnh và video WebM.</p>
         <div class="row"><button class="primary" onclick="finishArchive('tts')">Tiếp tục làm giọng đọc</button>
         <button onclick="finishArchive('production')">Mở timeline</button></div></section>
@@ -70,6 +73,9 @@ function archiveView() {
 function archiveSceneView(p, s, index) {
     const search = archiveResults[p.id + ':' + s.id];
     const assets = s.archiveAssets || [];
+    const matches = (search?.items || []).map((item, i) => ({item, i}));
+    const visible = matches.filter(({item}) => !archiveCatalogOnly || item.catalogued);
+    const hidden = matches.length - visible.length;
     return `<details class="panel media-scene" id="archive-scene-${s.id}" ${index === 0 ? 'open' : ''}>
         <summary>Cảnh ${index + 1} · ${esc(s.chapter)} · ${assets.length} tệp đã tải</summary>
         <div class="media-scene-body"><label for="archive-query-${s.id}">Prompt tìm tư liệu</label>
@@ -82,12 +88,15 @@ function archiveSceneView(p, s, index) {
         ${search?.busy ? '<p role="status">Đang tìm…</p>' : ''}
         ${search?.error ? `<p class="note">${esc(search.error)}</p>` : ''}
         ${search && !search.busy && !search.error && !search.items.length ? '<p class="hint">Chưa có kết quả. Thử tên gọi khác hoặc tên di tích, ví dụ Mai Thúc Loan hoặc Mai Hac De temple.</p>' : ''}
-        <div class="reference-gallery">${(search?.items || []).map((item, i) => `<article class="reference-image-card">
+        ${(search?.warnings || []).map(warning => `<p class="hint">${esc(warning)}</p>`).join('')}
+        ${hidden ? `<p class="hint">Đã ẩn ${hidden} mục thiếu hồ sơ lưu trữ và niên đại phù hợp. Bỏ chọn bộ lọc để xem.</p>` : ''}
+        <div class="reference-gallery">${visible.map(({item, i}) => `<article class="reference-image-card">
             ${item.thumbnail ? `<img src="${esc(item.thumbnail)}" alt="" loading="lazy" style="width:100%;max-height:160px;object-fit:contain">` : ''}
             <div class="reference-image-caption"><b>${esc(item.title)}</b>
+            <span class="hint">${esc([item.provider, item.recordType, item.recordDate].filter(Boolean).join(" · "))}</span>
             <span class="hint">${esc(item.license || 'Xem giấy phép trên trang nguồn')} · ${esc(item.artist)}</span>
             <div class="row"><button data-url="${esc(item.source)}" onclick="send('openLink',{url:this.dataset.url})">Trang nguồn ↗</button>
-            <button ${item.busy || assets.some(a => a.url === item.url) || !item.license ? 'disabled' : ''} onclick="archiveRequest('${s.id}',null,${i})">${item.busy ? 'Đang chuẩn bị…' : assets.some(a => a.url === item.url) ? 'Đã tải' : 'Tải vào cảnh'}</button></div>
+            <button ${item.busy || assets.some(a => a.url === item.url) || !item.license || !item.url ? 'disabled' : ''} onclick="archiveRequest('${s.id}',null,${i})">${item.busy ? 'Đang chuẩn bị…' : assets.some(a => a.url === item.url) ? 'Đã tải' : !item.url || !item.license ? 'Xem tại kho' : 'Tải vào cảnh'}</button></div>
             </div></article>`).join('')}</div>
         ${assets.map(a => `<div class="row"><b class="grow">${a.kind === 'image' ? 'Ảnh' : 'Video'} · ${esc(a.title)}</b>
             <button data-url="${esc(a.source)}" onclick="send('openLink',{url:this.dataset.url})">Trang nguồn ↗</button>

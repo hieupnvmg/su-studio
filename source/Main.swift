@@ -219,7 +219,7 @@ final class Studio: NSObject, NSApplicationDelegate, WKScriptMessageHandler, WKU
                 var result: [String: Any]
                 do {
                     if action == "archiveSearch" {
-                        result = ["items": try await ArchiveMedia.search(query, kind: kind)]
+                        result = await ArchiveMedia.searchAll(query, kind: kind)
                     } else {
                         result = try await ArchiveMedia.download(url, kind: kind, root: archiveRoot)
                     }
