@@ -9,7 +9,7 @@ let html=try String(contentsOfFile:"source/index.html",encoding:.utf8)
 precondition(html.range(of:"<script src=\"dialogue.js\"")!.lowerBound < html.range(of:"render();if(native)send('load')")!.lowerBound, "Load state only after workflow scripts are ready")
 let inline=String(html.components(separatedBy:"<script>")[1].components(separatedBy:"</script>")[0].components(separatedBy:"render();if(native)")[0])
 c.evaluateScript(inline)
-for name in ["script-import.js","updater.js","reference-images.js","narration-player.js","tts-batch.js","tts.js","media-studio.js","auto-tags.js","visual-bible.js","dialogue.js","video-references.js","excel-import.js","angle-images.js"] { c.evaluateScript(try String(contentsOfFile:"source/"+name,encoding:.utf8)) }
+for name in ["script-import.js","updater.js","reference-images.js","narration-player.js","tts-batch.js","tts.js","media-studio.js","auto-tags.js","visual-bible.js","dialogue.js","video-references.js","excel-import.js","angle-images.js","archive-media.js"] { c.evaluateScript(try String(contentsOfFile:"source/"+name,encoding:.utf8)) }
 c.evaluateScript("""
 const fixture={id:'p',title:'Test <script>',scenes:[{id:'s',time:'00:00–00:20',chapter:'Chương 1',voice:'Lời kể',image:'Prompt',video:'Prompt video',approvals:{script:true,audio:true},assets:{audio:[{selected:true,path:'/test.mp3',text:'Lời kể'}]}}],references:[],guide:{sourceMode:'script',sourceScript:'Lời kể',brief:{duration:10,audience:'Test'},steps:{storyboard:{approved:true,draft:{scenes:[],document:'',sources:[]}}}}};
 state.projects=[fixture];selected='p';page='assistant';aiViewedStage='tts';
@@ -27,7 +27,7 @@ if(!ttsAssistantView().includes('media-scene'))throw Error('audio view');
 if(!referenceAssistantView().includes('Chuẩn bị ảnh'))throw Error('image view');
 if(!workflowNavigation(fixture,'tts').includes('aria-current="step"'))throw Error('navigation');
 if(!settingsView().includes('Cài đặt'))throw Error('settings');
-if(aiStagesFor(fixture).length!==5)throw Error('source workflow');
+if(aiStagesFor(fixture).length!==6)throw Error('source workflow');
 if(aiReady(fixture,'production'))throw Error('image gate');
 const old={id:'keep',chapter:'A',voice:'V',image:'I',video:'C',approvals:{script:true,audio:true,image:true,video:true},assets:{image:[{id:'img',selected:true,path:'/saved.png'}]}};
 const kept=retainStoryboardAssets([old],[{chapter:'A',voice:'V',image:'I',video:'C'}])[0];

@@ -209,6 +209,26 @@ final class Studio: NSObject, NSApplicationDelegate, WKScriptMessageHandler, WKU
             if let raw = body["url"] as? String, let url = URL(string: raw), ["https", "http"].contains(url.scheme?.lowercased() ?? "") { NSWorkspace.shared.open(url) }
         case "assistantGenerate": codex.generateAssistant(body)
         case "assistantCancel": codex.interruptAssistant()
+        case "archiveSearch", "archiveDownload":
+            let requestID = body["requestId"] as? String ?? ""
+            let kind = body["kind"] as? String == "video" ? "video" : "image"
+            let query = String((body["query"] as? String ?? "").prefix(300))
+            let url = body["url"] as? String ?? ""
+            let archiveRoot = root
+            Task.detached { [weak self] in
+                var result: [String: Any]
+                do {
+                    if action == "archiveSearch" {
+                        result = ["items": try await ArchiveMedia.search(query, kind: kind)]
+                    } else {
+                        result = try await ArchiveMedia.download(url, kind: kind, root: archiveRoot)
+                    }
+                } catch {
+                    result = ["error": error.localizedDescription]
+                }
+                result["requestId"] = requestID
+                await MainActor.run { [weak self, result] in self?.reply(result, "nativeArchiveMedia") }
+            }
         case "timeline": timeline.command(body)
         case "timelineImport":
             let panel = NSOpenPanel(); panel.allowsMultipleSelection=false;panel.allowedFileTypes=["mp4","mov","m4v"]
