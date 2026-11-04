@@ -71,10 +71,14 @@ enum ArchiveMedia {
             .map { URLQueryItem(name: $0.key, value: $0.value) }, timeout: 4)
     }
 
-    private static func relevant(_ item: [String: Any], to subject: SearchSubject) -> Bool {
+    private static func relevant(_ item: [String: Any], to subject: SearchSubject, includeCategoryMatches: Bool = true) -> Bool {
         guard subject.isPerson else { return true }
         let title = normalized(item["title"] as? String ?? "")
         let context = (item["searchContext"] as? String ?? "").split(separator: "|").map { normalized(String($0)) }
+        let description = normalized(item["searchDescription"] as? String ?? "")
+        if context.contains(where: { $0.hasPrefix("streets in ") || $0.hasPrefix("roads in ") }) {
+            return false
+        }
         let names = subject.names.map(normalized).filter { !$0.isEmpty }
         let location = #"\b(?:duong(?: pho)?|pho|ngo|dai lo|nga tu|nga ba|giao lo|street|road|avenue|boulevard)\b"#
         for name in names {
@@ -84,17 +88,26 @@ enum ArchiveMedia {
                 return false
             }
             // Some street photos list only the name followed by a street address.
-            if title.range(of: key + #" (?:phuong|quan|ward|district) \d+\b"#,
+            if title.range(of: key + #" (?:(?:phuong|quan|ward|district|p)\s*\d+\b|(?:tp|thanh pho|city of) )"#,
                            options: .regularExpression) != nil { return false }
         }
         return names.contains { name in
-            ([title] + context).contains { (" " + $0 + " ").contains(" " + name + " ") }
+            let phrase = " " + name + " "
+            let matchesCaption = (" " + description + " ").contains(phrase)
+                && title.contains(name.replacingOccurrences(of: " ", with: ""))
+            return (" " + title + " ").contains(phrase) || matchesCaption
+                || (includeCategoryMatches && context.contains { (" " + $0 + " ").contains(phrase) })
         }
     }
 
     private static func searchCommons(_ subject: SearchSubject, kind: String) async throws -> [[String: Any]] {
+        var queries = subject.names
+        if subject.isPerson {
+            // Commons can index captions or filenames under the unaccented spelling only.
+            queries += subject.names.map { "\"\(normalized($0))\"" }
+        }
         let batches = await withTaskGroup(of: (Int, [[String: Any]]?).self) { group in
-            for (index, name) in subject.names.enumerated() {
+            for (index, name) in queries.enumerated() {
                 group.addTask { (index, try? await searchFiles(name, kind: kind)) }
             }
             var batches: [(Int, [[String: Any]])] = []
@@ -105,9 +118,12 @@ enum ArchiveMedia {
         }
         guard !batches.isEmpty else { throw error("Không tìm được tư liệu từ Wikimedia Commons. Thử lại sau.") }
         var seen = Set<String>()
-        return batches.sorted { $0.0 < $1.0 }.flatMap { $0.1 }.filter {
-            guard let url = $0["url"] as? String else { return false }
-            return relevant($0, to: subject) && seen.insert(url).inserted
+        return batches.sorted { $0.0 < $1.0 }.flatMap { index, items in
+            items.filter { item in
+                guard let url = item["url"] as? String else { return false }
+                return relevant(item, to: subject, includeCategoryMatches: index < subject.names.count)
+                    && seen.insert(url).inserted
+            }
         }
     }
 
@@ -140,6 +156,7 @@ enum ArchiveMedia {
             let synthetic = markedSynthetic([title, value("Categories"), value("ImageDescription")].joined(separator: " "))
             return ["title": String(title.dropFirst(5)), "url": media, "source": source,
                     "searchContext": value("Categories"),
+                    "searchDescription": value("ImageDescription").replacingOccurrences(of: "<[^>]+>", with: " ", options: .regularExpression),
                     "provider": "Wikimedia Commons", "catalogued": false, "recordDate": value("DateTimeOriginal"),
                     "recordType": synthetic ? "Hồ sơ có nhãn AI hoặc phục dựng" : "Tệp cộng đồng · cần đối chiếu",
                     "thumbnail": info["thumburl"] as? String ?? "", "kind": kind,
@@ -166,7 +183,7 @@ enum ArchiveMedia {
         let results = await [archiveResult, commonsResult]
         let items = results.flatMap { $0.items }
         let matching = items.filter { relevant($0, to: subject) }.map { item in
-            item.filter { $0.key != "searchContext" }
+            item.filter { $0.key != "searchContext" && $0.key != "searchDescription" }
         }
         return ["items": matching, "warnings": results.compactMap { $0.warning }]
     }

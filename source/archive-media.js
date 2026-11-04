@@ -1,6 +1,6 @@
 let archiveResults = {};
 const archiveRequests = new Map();
-let archiveCatalogOnly = true;
+let archiveCatalogOnly = false;
 
 function useSceneArchivePrompt(sid) {
     const scene = referenceScene(sid);
