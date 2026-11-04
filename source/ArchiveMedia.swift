@@ -8,6 +8,19 @@ enum ArchiveMedia {
     }
 
     static func search(_ query: String, kind: String) async throws -> [[String: Any]] {
+        let results = try await searchFiles(query, kind: kind)
+        guard results.isEmpty else { return results }
+
+        // Commons can return zero matches when an honorific is absent from file metadata.
+        let name = query.replacingOccurrences(
+            of: #"^\s*(?:vua|hoàng đế|quốc vương|king|emperor)\s+"#,
+            with: "", options: [.regularExpression, .caseInsensitive]
+        ).trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !name.isEmpty, name != query else { return results }
+        return try await searchFiles(name, kind: kind)
+    }
+
+    private static func searchFiles(_ query: String, kind: String) async throws -> [[String: Any]] {
         var url = URLComponents(string: "https://commons.wikimedia.org/w/api.php")!
         let type = kind == "video" ? "video" : "bitmap"
         let parameters = [
