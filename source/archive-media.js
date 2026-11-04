@@ -89,7 +89,7 @@ function archiveSceneView(p, s, index) {
         ${search?.error ? `<p class="note">${esc(search.error)}</p>` : ''}
         ${search && !search.busy && !search.error && !search.items.length ? '<p class="hint">Chưa có kết quả. Thử tên gọi khác hoặc tên di tích, ví dụ Mai Thúc Loan hoặc Mai Hac De temple.</p>' : ''}
         ${(search?.warnings || []).map(warning => `<p class="hint">${esc(warning)}</p>`).join('')}
-        ${hidden ? `<p class="hint">Đã ẩn ${hidden} mục thiếu hồ sơ lưu trữ và niên đại phù hợp. Bỏ chọn bộ lọc để xem.</p>` : ''}
+        ${hidden ? `<p class="hint">Đã ẩn ${hidden} mục thiếu hồ sơ lưu trữ và niên đại phù hợp.  <button onclick="archiveCatalogOnly=false;render()">Xem thêm kết quả cần đối chiếu</button></p>` : ''}
         <div class="reference-gallery">${visible.map(({item, i}) => `<article class="reference-image-card">
             ${item.thumbnail ? `<img src="${esc(item.thumbnail)}" alt="" loading="lazy" style="width:100%;max-height:160px;object-fit:contain">` : ''}
             <div class="reference-image-caption"><b>${esc(item.title)}</b>

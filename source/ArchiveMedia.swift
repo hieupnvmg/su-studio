@@ -8,16 +8,44 @@ enum ArchiveMedia {
     }
 
     static func search(_ query: String, kind: String) async throws -> [[String: Any]] {
-        let results = try await searchFiles(query, kind: kind)
-        guard results.isEmpty else { return results }
-
-        // Commons can return zero matches when an honorific is absent from file metadata.
-        let name = query.replacingOccurrences(
-            of: #"^\s*(?:vua|hoàng đế|quốc vương|king|emperor)\s+"#,
-            with: "", options: [.regularExpression, .caseInsensitive]
-        ).trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !name.isEmpty, name != query else { return results }
+        let name = searchName(query)
+        if isMaiHacDe(name) {
+            async let royalName = searchFiles("Mai Hắc Đế", kind: kind)
+            async let birthName = searchFiles("Mai Thúc Loan", kind: kind)
+            let results = try await royalName + birthName
+            var seen = Set<String>()
+            return results.filter {
+                let title = $0["title"] as? String ?? ""
+                guard let url = $0["url"] as? String else { return false }
+                return matchesMaiHacDe(title) && seen.insert(url).inserted
+            }
+        }
         return try await searchFiles(name, kind: kind)
+    }
+
+    private static func searchName(_ query: String) -> String {
+        let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        let name = trimmed.replacingOccurrences(
+            of: #"^(?:nhà\s+vua|nha\s+vua|vua|hoàng đế|quốc vương|king|emperor)\s+"#,
+            with: "", options: [.regularExpression, .caseInsensitive]
+        )
+        return name.isEmpty ? trimmed : name
+    }
+
+    private static func isMaiHacDe(_ name: String) -> Bool {
+        ["mai hắc đế", "mai thúc loan", "mai hac de", "mai thuc loan"].contains(name.lowercased())
+    }
+
+    private static func matchesMaiHacDe(_ title: String) -> Bool {
+        let normalized = title.folding(options: [.caseInsensitive, .diacriticInsensitive], locale: nil)
+            .replacingOccurrences(of: "đ", with: "d")
+        guard normalized.contains("mai hac de") || normalized.contains("mai thuc loan") else { return false }
+        return !isStreet(title)
+    }
+
+    private static func isStreet(_ title: String) -> Bool {
+        title.range(of: #"\b(?:đường|phố|street|road|avenue|mể cốc|thái phiên)\b"#,
+                    options: [.regularExpression, .caseInsensitive]) != nil
     }
 
     private static func searchFiles(_ query: String, kind: String) async throws -> [[String: Any]] {
@@ -61,16 +89,19 @@ enum ArchiveMedia {
     }
 
     static func searchAll(_ query: String, kind: String) async -> [String: Any] {
+        let name = searchName(query)
         let archive = kind == "video" ? "Prelinger Archives" : "The Met"
         async let commonsResult = searchProvider("Wikimedia Commons") {
             try await search(query, kind: kind)
         }
         async let archiveResult = searchProvider(archive) {
-            if kind == "video" { return try await searchPrelinger(query) }
-            return try await searchMet(query)
+            if kind == "video" { return try await searchPrelinger(name) }
+            return try await searchMet(name)
         }
         let results = await [archiveResult, commonsResult]
-        return ["items": results.flatMap { $0.items }, "warnings": results.compactMap { $0.warning }]
+        let items = results.flatMap { $0.items }
+        let relevant = isMaiHacDe(name) ? items.filter { matchesMaiHacDe($0["title"] as? String ?? "") } : items
+        return ["items": relevant, "warnings": results.compactMap { $0.warning }]
     }
 
     private static func searchProvider(
