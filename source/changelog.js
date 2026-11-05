@@ -3,7 +3,7 @@
 // Newest first; the date is filled when the version is released.
 const appChangelog=
 [
- {"version":"0.14.9","date":"","title":"Sao lưu, khôi phục dự án và nhật ký thay đổi","items":[
+ {"version":"0.14.9","date":"2026-11-05","title":"Sao lưu, khôi phục dự án và nhật ký thay đổi","items":[
   "Sao lưu toàn bộ dự án hoặc từng dự án ra một file .zip, gồm cả giọng đọc, ảnh và video.",
   "Khôi phục từ file sao lưu: chọn dự án cần lấy lại, giữ cả hai bản hoặc thay thế bản đang có. Dùng được khi chuyển sang máy khác.",
   "Trước khi khôi phục, app tự lưu một bản dữ liệu hiện tại để quay lại nếu cần.",
