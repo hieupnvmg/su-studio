@@ -3,7 +3,7 @@ import JavaScriptCore
 let c=JSContext()!
 c.exceptionHandler={_,e in fatalError(e!.toString())}
 c.evaluateScript("var window={};var document={addEventListener:function(){}};function setInterval(){};var crypto={randomUUID:function(){return 'test-id'}};")
-for file in ["source/assistant.js", "source/script-import.js", "source/ui.js", "source/updater.js", "source/tts.js", "source/assistant-progress.js", "source/reference-images.js", "source/tts-batch.js", "source/model-picker.js", "source/native-editor.js", "source/narration-player.js", "source/media-studio.js", "source/auto-tags.js", "source/short-clips.js", "source/visual-bible.js", "source/dialogue.js", "source/video-references.js", "source/excel-import.js", "source/angle-images.js"] { c.setObject(try String(contentsOfFile:file,encoding:.utf8),forKeyedSubscript:"source" as NSString);c.evaluateScript("new Function(source)") }
+for file in ["source/assistant.js", "source/script-import.js", "source/ui.js", "source/changelog.js", "source/updater.js", "source/tts.js", "source/assistant-progress.js", "source/reference-images.js", "source/tts-batch.js", "source/model-picker.js", "source/native-editor.js", "source/backup.js", "source/narration-player.js", "source/media-studio.js", "source/auto-tags.js", "source/short-clips.js", "source/visual-bible.js", "source/dialogue.js", "source/video-references.js", "source/excel-import.js", "source/angle-images.js"] { c.setObject(try String(contentsOfFile:file,encoding:.utf8),forKeyedSubscript:"source" as NSString);c.evaluateScript("new Function(source)") }
 for name in ["assistant.js","assistant-progress.js","model-picker.js","ui.js"] { c.evaluateScript(try String(contentsOfFile:"source/"+name,encoding:.utf8)) }
 let html=try String(contentsOfFile:"source/index.html",encoding:.utf8)
 precondition(html.range(of:"<script src=\"dialogue.js\"")!.lowerBound < html.range(of:"render();if(native)send('load')")!.lowerBound, "Load state only after workflow scripts are ready")
@@ -11,7 +11,7 @@ let buildScript=try String(contentsOfFile:"source/build.sh",encoding:.utf8)
 for part in html.components(separatedBy:"<script src=\"").dropFirst() { let name=part.components(separatedBy:"\"")[0]; precondition(buildScript.contains("$STUDIO_SOURCE/"+name+"\""),"build.sh does not copy "+name) }
 let inline=String(html.components(separatedBy:"<script>")[1].components(separatedBy:"</script>")[0].components(separatedBy:"render();if(native)")[0])
 c.evaluateScript(inline)
-for name in ["script-import.js","updater.js","reference-images.js","narration-player.js","tts-batch.js","tts.js","media-studio.js","auto-tags.js","short-clips.js","visual-bible.js","dialogue.js","video-references.js","excel-import.js","angle-images.js","archive-media.js"] { c.evaluateScript(try String(contentsOfFile:"source/"+name,encoding:.utf8)) }
+for name in ["script-import.js","changelog.js","updater.js","reference-images.js","narration-player.js","tts-batch.js","tts.js","media-studio.js","auto-tags.js","short-clips.js","visual-bible.js","dialogue.js","video-references.js","excel-import.js","angle-images.js","archive-media.js","backup.js"] { c.evaluateScript(try String(contentsOfFile:"source/"+name,encoding:.utf8)) }
 c.evaluateScript("""
 const fixture={id:'p',title:'Test <script>',scenes:[{id:'s',time:'00:00–00:20',chapter:'Chương 1',voice:'Lời kể',image:'Prompt',video:'Prompt video',approvals:{script:true,audio:true},assets:{audio:[{selected:true,path:'/test.mp3',text:'Lời kể'}]}}],references:[],guide:{sourceMode:'script',sourceScript:'Lời kể',brief:{duration:10,audience:'Test'},steps:{storyboard:{approved:true,draft:{scenes:[],document:'',sources:[]}}}}};
 state.projects=[fixture];selected='p';page='assistant';aiViewedStage='tts';
@@ -276,4 +276,35 @@ selected='long';cut.mode='series';cut.parts=2;sent=[];suggestShorts();const ask2
 window.nativeAssistant({requestId:ask2.body.requestId,projectId:'long',stage:'short_cut',status:'completed',result:{options:[{id:'a',title:'P1',description:''},{id:'b',title:'P2',description:''}],scenes:[{chapter:'L1|L2',voice:'Hook 1',notes:'Phần sau',image:'',video:'',time:''},{chapter:'L3|L4',voice:'Hook 2',notes:'Theo dõi',image:'',video:'',time:''}]}});
 createAllShortParts();const parts=state.projects.filter(p=>p.shortSource?.parts===2);if(parts.length!==2||!parts.some(p=>p.title==='Trận Bạch Đằng — Phần 1/2'))throw Error('series creates every part');
 """)
-print("UI scripts parse; Short format, framing, captions, short cuts and series, dashboard, overview, TTS, references, settings, escaping and workflow gate passed")
+c.evaluateScript("""
+let backupSeq=0;crypto.randomUUID=function(){return 'bk-'+(++backupSeq)};confirm=function(){return true};save=function(){};render=function(){};let toasts=[];toast=function(m){toasts.push(m)};
+const fakeDialog={open:false,innerHTML:'',showModal(){this.open=true},close(){this.open=false},addEventListener(){}};
+const realGet=document.getElementById;document.getElementById=function(k){return k==='restoreDialog'&&fakeDialog.created?fakeDialog:null};document.createElement=function(){fakeDialog.created=true;return fakeDialog};document.body={appendChild(){}};
+// Changelog
+if(!versionAtMost('0.14.8','0.14.9')||versionAtMost('0.14.10','0.14.9')||!versionAtMost('0.14.9','0.14.9'))throw Error('version compare');
+if(changelogHistoryView('0.14.8').includes('0.14.9')||!changelogHistoryView('0.14.8').includes('Short dọc 9:16'))throw Error('history lists only installed versions');
+if(appChangelog.some(e=>!e.version||!e.items?.length))throw Error('every changelog entry has items');
+updateState={...updateState,current:'0.14.8',status:'available',version:'0.14.9',notes:['Sao lưu <b>dự án</b>'],notesTitle:'Sao lưu'};
+const upd=updaterView();if(!upd.includes('Có gì mới trong bản 0.14.9')||!upd.includes('Sao lưu &lt;b&gt;dự án&lt;/b&gt;'))throw Error('available update shows escaped notes');
+state.projects=[{id:'keep',title:'Giữ',scenes:[]}];state.seenVersion='0.14.7';if(!whatsNewNotice().includes('Đã cập nhật lên Sử Studio 0.14.8'))throw Error('notice after update');
+dismissWhatsNew();if(state.seenVersion!=='0.14.8'||whatsNewNotice()!=='')throw Error('notice dismissed once');
+state.projects=[];delete state.seenVersion;if(whatsNewNotice()!==''||state.seenVersion!=='0.14.8')throw Error('fresh install shows no notice');
+// Backup
+state.projects=[{id:'keep',title:'Giữ',scenes:[]},{id:'clash',title:'Bản đang có',scenes:[{id:'s'}]}];
+sent=[];backupProjects();if(sent[0].action!=='backupCreate'||sent[0].body.state.projects.length!==2||sent[0].body.name!==undefined)throw Error('backup all');
+sent=[];backupProjects('clash');if(sent[0].body.state.projects.length!==1||sent[0].body.name!=='Ban-dang-co')throw Error('backup one project with ascii file name');
+if(!backupPanel().includes('Sao lưu tất cả dự án')||!studioDashboard().includes('Khôi phục'))throw Error('backup entry points');
+const backed={token:'T1',status:'preview',name:'b.zip',manifest:{version:'0.14.9',created:'2026-11-05T08:00:00Z'},files:3,bytes:2500000,projects:[{id:'clash',title:'Bản sao lưu',scenes:[]},{id:'new',title:'Dự án mới <x>',format:'short',scenes:[{},{}],guide:{steps:{storyboard:{status:'running'}}}},{title:'broken'}]};
+window.nativeBackup(backed);if(!fakeDialog.open||!fakeDialog.innerHTML.includes('Khôi phục 2 dự án')||!fakeDialog.innerHTML.includes('Dự án mới &lt;x&gt;')||!fakeDialog.innerHTML.includes('1 dự án đang có trong app'))throw Error('restore preview lists valid projects and conflicts');
+sent=[];confirmRestore();if(sent[0].action!=='backupApply'||sent[0].body.token!=='T1')throw Error('apply sends token');
+if(state.projects.length!==2)throw Error('nothing merged before media is copied');
+window.nativeBackup({status:'applied',token:'WRONG',copied:3});if(state.projects.length!==2)throw Error('wrong token ignored');
+window.nativeBackup({status:'applied',token:'T1',copied:3});
+if(state.projects.length!==4||state.projects.find(p=>p.id==='clash').title!=='Bản đang có'||!state.projects.some(p=>p.title==='Bản sao lưu (bản khôi phục)'&&p.id!=='clash'))throw Error('keep both adds a copy');
+if(state.projects.find(p=>p.id==='new').guide.steps.storyboard.status==='running')throw Error('restored running steps are reset');
+window.nativeBackup(backed);toggleRestoreProject('new',false);setRestoreMode('replace');sent=[];confirmRestore();window.nativeBackup({status:'applied',token:'T1',copied:0});
+if(state.projects.length!==4||state.projects.find(p=>p.id==='clash').title!=='Bản sao lưu')throw Error('replace swaps the project in place');
+window.nativeBackup(backed);sent=[];cancelRestore();if(sent[0].action!=='backupDiscard'||fakeDialog.open)throw Error('cancel discards staged backup');
+document.getElementById=realGet;
+""")
+print("UI scripts parse; changelog, backup and restore, Short format, framing, captions, short cuts and series, dashboard, overview, TTS, references, settings, escaping and workflow gate passed")

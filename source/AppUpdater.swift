@@ -10,6 +10,8 @@ final class AppUpdater: NSObject, URLSessionTaskDelegate {
     private var digest = ""
     private var version = ""
     private var staged: URL?
+    private var notes: [String] = []
+    private var notesTitle = ""
     private var session: URLSession?
     private let cache: URL
     init(root: URL) {
@@ -28,7 +30,7 @@ final class AppUpdater: NSObject, URLSessionTaskDelegate {
         return b.lexicographicallyPrecedes(a)
     }
     private func emit(_ state: String, _ message: String) {
-        onUpdate?(["status": state, "message": message, "current": current, "version": version, "repository": repository])
+        onUpdate?(["status": state, "message": message, "current": current, "version": version, "repository": repository, "notes": notes, "notesTitle": notesTitle])
     }
     private func fetch(_ url: URL, token: String?, binary: Bool = false, completion: @escaping (Data?, Int, Error?) -> Void) {
         var req = URLRequest(url: url); req.timeoutInterval = binary ? 180 : 25
@@ -44,6 +46,18 @@ final class AppUpdater: NSObject, URLSessionTaskDelegate {
             DispatchQueue.main.async { session.finishTasksAndInvalidate(); completion(data, status, error) }
         }.resume()
     }
+    /// Release notes are display text only: plain strings, bounded in count and length.
+    static func cleanNotes(_ raw: Any?) -> [String] {
+        let lines: [String]
+        if let list = raw as? [String] { lines = list }
+        else if let text = raw as? String {
+            lines = text.components(separatedBy: .newlines).compactMap { line in
+                let t = line.trimmingCharacters(in: .whitespaces)
+                return t.hasPrefix("- ") || t.hasPrefix("* ") ? String(t.dropFirst(2)) : nil
+            }
+        } else { lines = [] }
+        return lines.map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }.filter { !$0.isEmpty }.prefix(30).map { String($0.prefix(400)) }
+    }
     private func checkPublicFeed() {
         let url = URL(string: "https://github.com/\(repository)/releases/latest/download/latest.json")!
         fetch(url, token: nil, binary: true) { [weak self] data, status, error in
@@ -54,6 +68,7 @@ final class AppUpdater: NSObject, URLSessionTaskDelegate {
                 self.emit("error", "Chưa đọc được nguồn cập nhật công khai (HTTP \(status)). Kiểm tra mạng hoặc thử lại sau."); return
             }
             self.version = version
+            self.notes = Self.cleanNotes(body["notes"]); self.notesTitle = String((body["title"] as? String ?? "").prefix(120))
             guard Self.newer(version, than: self.current) else {
                 self.emit("current", "Bạn đang dùng bản mới nhất (\(self.current))."); return
             }
@@ -69,7 +84,7 @@ final class AppUpdater: NSObject, URLSessionTaskDelegate {
         }
     }
     func check(token: String?) {
-        guard !busy else { return }; busy = true; staged = nil; assetURL = nil
+        guard !busy else { return }; busy = true; staged = nil; assetURL = nil; notes = []; notesTitle = ""
         emit("checking", "Đang kiểm tra GitHub Releases…")
         if token == nil || token?.isEmpty == true { checkPublicFeed(); return }
         let url = URL(string: "https://api.github.com/repos/\(repository)/releases/latest")!
@@ -82,6 +97,7 @@ final class AppUpdater: NSObject, URLSessionTaskDelegate {
                 self.emit("error", status == 404 ? "Chưa có release hoặc repo riêng tư. Nếu repo riêng tư, lưu GitHub token có quyền Contents: Read của repo rồi thử lại." : "Không kiểm tra được cập nhật (HTTP \(status)). Kiểm tra mạng hoặc quyền GitHub."); return
             }
             self.version = tag.hasPrefix("v") ? String(tag.dropFirst()) : tag
+            self.notes = Self.cleanNotes(body["body"]); self.notesTitle = ""
             guard Self.newer(self.version, than: self.current) else {
                 self.emit("current", "Bạn đang dùng bản mới nhất (\(self.current))."); return
             }

@@ -90,3 +90,9 @@ Trong Video & xuất, dưới các nút timeline: Khung hình = Nền mờ phía
 
 CẮT SHORT TỪ VIDEO DÀI
 Ở dự án video dài: Video & xuất → "Cắt short từ video này". Chọn "Chọn đoạn hay nhất" (độ dài và số short) hoặc "Chia thành series nhiều phần", bấm ✦ AI đề xuất đoạn cắt (dùng hạn mức Codex). Mỗi đề xuất ghi cảnh từ–đến, thời lượng, câu hook và câu kết; sửa hoặc bỏ tick nếu không muốn. "Tạo dự án short" tạo dự án dọc mới, dùng lại giọng đọc, ảnh, clip và chỉnh sửa timeline của các cảnh đó; video dài giữ nguyên. Câu hook/câu kết dùng tạm hình của cảnh trong đoạn và chỉ cần tạo giọng đọc; sau đó bấm "Căn theo giọng đọc" rồi xuất. Series có nút "Tạo cả N phần", tên dạng "… — Phần 1/3". Clip cũ là khổ ngang nên được đặt giữa trên nền mờ; muốn đầy khung thì chọn Cắt giữa hoặc tạo lại clip dọc.
+
+SAO LƯU VÀ KHÔI PHỤC
+Trang Dự án → Sao lưu (tất cả dự án) hoặc menu ⋯ trên thẻ dự án → Sao lưu dự án này. Chọn nơi lưu; app tạo một file .zip gồm dự án và chỉ những file giọng đọc, ảnh, video đang được dùng. API key và đăng nhập không nằm trong file. Khôi phục: trang Dự án → Khôi phục (hoặc Cài đặt → Sao lưu & khôi phục) → chọn file .zip, tick các dự án cần lấy lại. Nếu dự án đã có trong app: "Giữ cả hai" thêm bản có đuôi "(bản khôi phục)", "Thay bản đang có" ghi đè. Trước khi khôi phục app tự lưu dữ liệu hiện tại vào Application Support/HistoryStudio/backups. Dùng được để chuyển dự án sang máy khác.
+
+CÓ GÌ MỚI
+Cài đặt → Cập nhật Sử Studio: khi có bản mới, app hiện danh sách thay đổi của bản đó trước khi tải. Mục "Có gì mới · lịch sử thay đổi" liệt kê các bản đã cài. Sau khi cập nhật, trang Dự án hiện thông báo một lần với các điểm mới chính.

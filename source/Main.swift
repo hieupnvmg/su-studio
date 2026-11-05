@@ -40,6 +40,7 @@ final class Studio: NSObject, NSApplicationDelegate, WKScriptMessageHandler, WKU
     lazy var updater = AppUpdater(root: root)
     let credentials = CredentialStore()
     private var credentialRevisions: [String: Int] = [:]
+    private var stagedRestore: (token: String, staged: ProjectBackup.Staged)?
     let root = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0].appendingPathComponent("HistoryStudio", isDirectory: true)
     func applicationDidFinishLaunching(_ notification: Notification) {
         if let iconURL = Bundle.main.url(forResource: "AppIcon", withExtension: "icns"), let icon = NSImage(contentsOf: iconURL) { NSApp.applicationIconImage = icon }
@@ -399,6 +400,65 @@ final class Studio: NSObject, NSApplicationDelegate, WKScriptMessageHandler, WKU
             } catch { reply(["error": "Không nhập được tài nguyên: \(error.localizedDescription)"]) }
         case "openAsset":
             if let path = body["path"] as? String, path.hasPrefix(root.appendingPathComponent("assets").path + "/") { NSWorkspace.shared.open(URL(fileURLWithPath: path)) }
+        case "backupCreate":
+            guard let state = body["state"] as? [String: Any] else { return }
+            let panel = NSSavePanel(); panel.allowedFileTypes = ["zip"]; panel.canCreateDirectories = true
+            let stamp = { let f = DateFormatter(); f.dateFormat = "yyyy-MM-dd"; return f.string(from: Date()) }()
+            panel.nameFieldStringValue = (body["name"] as? String).map { "Su-Studio-sao-luu-\($0)-\(stamp).zip" } ?? "Su-Studio-sao-luu-\(stamp).zip"
+            panel.title = "Sao lưu dự án"; panel.prompt = "Sao lưu"
+            guard panel.runModal() == .OK, let destination = panel.url else { reply(["status": "cancelled"], "nativeBackup"); return }
+            reply(["status": "working", "message": "Đang sao lưu dự án và tài nguyên…"], "nativeBackup")
+            let assets = root.appendingPathComponent("assets", isDirectory: true), version = updater.current
+            Task.detached { [weak self] in
+                var result: [String: Any]
+                do {
+                    let made = try ProjectBackup.create(state: state, assets: assets, appVersion: version, to: destination)
+                    result = ["status": "created", "path": destination.path, "name": destination.lastPathComponent, "projects": made.projects, "files": made.files, "bytes": made.bytes]
+                } catch { result = ["status": "error", "message": "Sao lưu thất bại: \(error.localizedDescription)"] }
+                await MainActor.run { [weak self, result] in
+                    if result["status"] as? String == "created" { NSWorkspace.shared.activateFileViewerSelecting([destination]) }
+                    self?.reply(result, "nativeBackup")
+                }
+            }
+        case "backupOpen":
+            let panel = NSOpenPanel(); panel.allowedFileTypes = ["zip"]; panel.allowsMultipleSelection = false
+            panel.title = "Khôi phục từ bản sao lưu"; panel.prompt = "Mở bản sao lưu"
+            guard panel.runModal() == .OK, let archive = panel.url else { reply(["status": "cancelled"], "nativeBackup"); return }
+            reply(["status": "working", "message": "Đang đọc bản sao lưu…"], "nativeBackup")
+            ProjectBackup.discard(stagedRestore?.staged); stagedRestore = nil
+            let assets = root.appendingPathComponent("assets", isDirectory: true)
+            Task.detached { [weak self] in
+                do {
+                    let staged = try ProjectBackup.read(archive, assets: assets), token = UUID().uuidString
+                    await MainActor.run { [weak self] in
+                        guard let self else { ProjectBackup.discard(staged); return }
+                        self.stagedRestore = (token, staged)
+                        self.reply(["status": "preview", "token": token, "name": archive.lastPathComponent, "manifest": staged.manifest, "projects": staged.state["projects"] ?? [], "files": staged.files.count, "bytes": staged.bytes], "nativeBackup")
+                    }
+                } catch { await MainActor.run { [weak self] in self?.reply(["status": "error", "message": error.localizedDescription], "nativeBackup") } }
+            }
+        case "backupApply":
+            guard let token = body["token"] as? String, let pending = stagedRestore, pending.token == token else { reply(["status": "error", "message": "Bản sao lưu đã đóng. Mở lại file sao lưu rồi thử lại."], "nativeBackup"); return }
+            stagedRestore = nil
+            let assets = root.appendingPathComponent("assets", isDirectory: true), current = root.appendingPathComponent("projects.json")
+            let safety = root.appendingPathComponent("backups", isDirectory: true)
+            Task.detached { [weak self] in
+                var result: [String: Any]
+                do {
+                    // Keep the data as it was right before restoring, so a restore can be undone by hand.
+                    if FileManager.default.fileExists(atPath: current.path) {
+                        try FileManager.default.createDirectory(at: safety, withIntermediateDirectories: true)
+                        let f = DateFormatter(); f.dateFormat = "yyyy-MM-dd-HHmmss"
+                        try FileManager.default.copyItem(at: current, to: safety.appendingPathComponent("projects-truoc-khoi-phuc-\(f.string(from: Date())).json"))
+                    }
+                    let copied = try ProjectBackup.apply(pending.staged, assets: assets)
+                    result = ["status": "applied", "token": token, "copied": copied, "safety": safety.path]
+                } catch { result = ["status": "error", "message": "Khôi phục thất bại, dữ liệu hiện tại được giữ nguyên: \(error.localizedDescription)"] }
+                ProjectBackup.discard(pending.staged)
+                await MainActor.run { [weak self, result] in self?.reply(result, "nativeBackup") }
+            }
+        case "backupDiscard":
+            ProjectBackup.discard(stagedRestore?.staged); stagedRestore = nil
         case "export":
             guard let project = body["project"] as? [String: Any] else { return }
             let panel = NSOpenPanel(); panel.canChooseDirectories = true; panel.canChooseFiles = false; panel.canCreateDirectories = true
