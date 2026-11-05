@@ -4,6 +4,10 @@ App macOS làm video lịch sử: kịch bản → storyboard → ElevenLabs TTS
 
 Swift/AppKit + WebKit; macOS 13+, Intel và Apple Silicon. Mỗi máy tự đăng nhập Codex và nhập key; dữ liệu lưu cục bộ, key trong Keychain.
 
+## Hướng dẫn sử dụng
+
+Xem `docs/huong-dan/index.html` (mở bằng trình duyệt): hướng dẫn từng bước kèm ảnh chụp màn hình đánh số.
+
 ## Build
 
 Cần Apple Command Line Tools. Đóng app rồi chạy `sh source/build.sh`.
