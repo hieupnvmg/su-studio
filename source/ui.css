@@ -7,3 +7,35 @@ body{-webkit-font-smoothing:antialiased}h1,h2,h3{line-height:1.3}p{line-height:1
 .reference-summary-thumb{width:88px;height:50px;object-fit:cover;border-radius:6px;flex-shrink:0;border:1px solid var(--line)}.reference-gallery{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:16px;margin-top:18px}.reference-image-card{border:1px solid var(--line);border-radius:10px;overflow:hidden;background:#fffdf9}.reference-image-card.is-selected{border:2px solid var(--green)}.reference-preview{padding:0;border:0;border-radius:0;display:flex;width:100%;aspect-ratio:16/9;background:#e9ecdf;cursor:zoom-in}.reference-preview img{width:100%;height:100%;object-fit:contain}.reference-image-caption{padding:12px;display:grid;gap:8px}.reference-image-caption>.hint{overflow-wrap:anywhere}.reference-lightbox{width:1100px;max-height:90vh;padding:20px;border:1px solid var(--line);border-radius:12px}.reference-lightbox::backdrop{background:#102219b3}.reference-lightbox h2{font-size:18px}.reference-lightbox>img{display:block;width:100%;max-height:70vh;object-fit:contain;margin-top:16px;background:#e9ecdf;border-radius:8px}.reference-lightbox .hint{overflow-wrap:anywhere}
 .timeline-scroll{overflow-x:auto;margin:20px 0;padding:12px;background:#edf0e6;border:1px solid var(--line);border-radius:10px}.timeline-lanes{width:max-content;min-width:100%}.timeline-track{display:flex;gap:4px}.timeline-ruler span{display:block;font-size:11px;flex-shrink:0;border-left:1px solid #889b80;padding:4px 8px;color:var(--muted)}.timeline-clip{display:flex;flex-direction:column;justify-content:center;align-items:flex-start;flex-shrink:0;height:100px;overflow:hidden;position:relative;text-align:left;background:#dce5d3;border:2px solid transparent;padding:10px;cursor:grab}.timeline-clip img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;opacity:.25}.timeline-clip strong,.timeline-clip small{z-index:1;overflow:hidden;text-overflow:ellipsis;max-width:100%;white-space:nowrap}.timeline-clip.active{border-color:var(--green);background:#c9dbbd}.timeline-clip.missing{border:1px dashed #b28b65;background:#f2e6d4}.timeline-audio>div{height:37px;flex-shrink:0;overflow:hidden;white-space:nowrap;padding:8px;font-size:11px;background:#dce6df;color:#325346;border-radius:5px;margin-top:4px}.timeline-inspector{padding:18px;background:#f4f6ee;border:1px solid var(--line);border-radius:10px}.timeline-inspector input[type=checkbox]{width:auto;margin-right:6px}.timeline-inspector>.row label{font-size:12px}.timeline-inspector .fields{margin-top:16px}.timeline-editor .timeline-scroll{max-width:100%}.ai-layout>div{min-width:0}
 .character-assignment{margin:16px 0;padding:14px;background:#eef2e7;border:1px solid var(--line);border-radius:8px}.character-assignment>b{font-size:13px}.character-assignment .row{margin-top:10px}.character-assignment input[type=checkbox]{width:auto;margin-right:5px}.character-assignment label{font-size:12px;display:flex;align-items:center}.character-assignment .hint{margin-top:10px}
+/* Button system: paper secondary, deep-green primary, gold AI, red destructive, quiet back/link. */
+button{font-weight:550;letter-spacing:.005em;background:linear-gradient(#fffefb,#f5f3ec);border:1px solid #d3d6ca;color:var(--ink);box-shadow:inset 0 1px 0 #fff,0 1px 2px #2935281a;transition:background .15s,border-color .15s,box-shadow .15s,color .15s,transform .08s}
+button:hover{background:linear-gradient(#fff,#eef3e9);border-color:#9fb596;color:var(--green);box-shadow:inset 0 1px 0 #fff,0 3px 9px #2935281f}
+button:active{transform:translateY(1px);box-shadow:inset 0 1px 2px #29352824}
+button:disabled,button:disabled:hover{opacity:1;cursor:not-allowed;color:#a2a99f;background:#f0efe9;border-color:#e2e2da;box-shadow:none;transform:none}
+button.primary{background:linear-gradient(#2d664d,#1c4533);border-color:#173a2a;color:#fff;box-shadow:inset 0 1px 0 #ffffff30,0 2px 6px #1c453340}
+button.primary:hover{background:linear-gradient(#347458,#204f3b);border-color:#173a2a;color:#fff;box-shadow:inset 0 1px 0 #ffffff38,0 6px 14px #1c453347}
+button.primary:active{box-shadow:inset 0 2px 3px #0c22184d}
+button.primary:disabled,button.primary:disabled:hover{background:#b3c3b6;border-color:#b3c3b6;color:#f5f7f3}
+button.ai{background:linear-gradient(#fefaf0,#f3e8cc);border-color:#dbc798;color:#6b5320}
+button.ai:hover{background:linear-gradient(#fffbf2,#eedfb8);border-color:#c5a865;color:#563f12;box-shadow:inset 0 1px 0 #fff,0 3px 9px #8a6a2224}
+button.danger{background:linear-gradient(#fffdfc,#faf0ec);border-color:#e5c8c0;color:#983a2e}
+button.danger:hover{background:#f8e4de;border-color:#d29a8d;color:#7f2b20;box-shadow:inset 0 1px 0 #fff,0 3px 9px #983a2e1f}
+button.back,button.link,button.flat{background:transparent;border-color:transparent;box-shadow:none}
+button.back{color:var(--muted);min-height:32px;padding:6px 12px 6px 8px;margin-left:-8px;border-radius:999px}
+button.back:hover{color:var(--green);background:#e6ece0;border-color:transparent;box-shadow:none}
+button.link{color:var(--green);min-height:32px;padding:6px 6px;text-decoration:underline;text-decoration-color:#21503c4d;text-underline-offset:3px}
+button.link:hover{background:transparent;border-color:transparent;box-shadow:none;text-decoration-color:currentColor}
+button.flat:hover{background:#ebefe5;border-color:transparent;box-shadow:none}
+.tabs button,.tabs button:hover,.nav,.nav:hover,.ai-step,.ai-step:hover,.project-menu button,.workflow-card button{box-shadow:none;transform:none}
+.tabs button,.tabs button:hover{background:transparent;border-color:transparent}
+.tabs button:hover{color:var(--green)}
+.nav{background:transparent}
+.nav:hover{background:#e3e8dc;border-color:transparent}
+.ai-step:hover{background:#eef2e8;border-color:#dfe6d6}
+.ai-step.active,.ai-step.active:hover{background:#e5ecde;border-color:#d0ddc6}
+.nav.active,.nav.active:hover{background:#d8e0d3}
+.project-menu button:hover{background:#eaf0e4;border-color:transparent}
+.scene-tools button.active,.scene-tools button.active:hover{background:var(--green);border-color:var(--green);color:#fff}
+.row{flex-wrap:wrap}
+label:has(>input[type=checkbox]),label:has(>input[type=radio]){display:flex;align-items:center;gap:9px;cursor:pointer}
+label>input[type=checkbox],label>input[type=radio]{width:auto;margin:0;accent-color:var(--green)}
