@@ -69,3 +69,6 @@ Mở cảnh trong Ảnh tham chiếu hoặc Video & xuất → Nhiều ảnh có
 
 TẢI TƯ LIỆU THẬT
 Ảnh tư liệu được dựng thành đoạn giữ hình ngay trên macOS, không cần FFmpeg; chỉ video WebM/OGV mới cần FFmpeg. Kết quả tìm web từ báo lớn (VnExpress, Dân trí, Thanh Niên, Znews, Tuổi Trẻ…), bảo tàng và kho lưu trữ có thể tải thẳng vào cảnh. App gửi trang nguồn khi tải để tránh bị máy chủ chặn. Nếu vẫn không có nút Tải vào cảnh, app ghi rõ lý do (trang xem, luồng phát, nguồn chặn tải hoặc chưa rõ giấy phép); mở trang nguồn, tải thủ công rồi dùng Nhập tệp đã tải.
+
+LÀM SONG SONG GIỌNG ĐỌC VÀ HÌNH ẢNH
+Sau khi duyệt storyboard, Giọng đọc, Chốt tạo hình và Ảnh tham chiếu mở cùng lúc: có thể tạo/duyệt ảnh trong khi audio còn đang làm. Ảnh tham chiếu vẫn cần tạo hình đã chốt; Video & xuất cần ảnh đã duyệt. Tư liệu thật là bước tuỳ chọn, không còn được gợi ý là bước tiếp theo. Danh sách bước ghi rõ bước nào "Làm song song được" hoặc "Chờ bước trước".

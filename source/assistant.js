@@ -18,7 +18,7 @@ const aiMeta={
  outline:['Lập dàn ý','Chia chương, nhịp kể và thời lượng trước khi viết từng cảnh.','Lên dàn ý'],
  storyboard:['Viết storyboard','Tạo lời thuyết minh, prompt ảnh/video và ghi chú dựng theo cảnh.','Viết storyboard'],
  archive:['Tư liệu thật','Tìm ảnh và video theo từng cảnh.','Tìm tư liệu'],
- tts:['Tạo giọng đọc','Tạo và duyệt audio ElevenLabs trước khi làm hình.','Tạo giọng đọc'],
+ tts:['Tạo giọng đọc','Tạo và duyệt audio ElevenLabs; có thể làm song song với tạo hình và ảnh.','Tạo giọng đọc'],
  design:['Chốt tạo hình','Duyệt nhân vật chuẩn và phong cách chung trước khi tạo ảnh cảnh.','Chốt tạo hình'],
  references:['Ảnh tham chiếu','Tạo, nhập và duyệt ảnh trước khi làm clip video.','Chuẩn bị ảnh'],
  production:['Làm thành video','AI hướng dẫn giọng đọc, ảnh, clip và bản dựng theo tiến độ.','Hướng dẫn bước tiếp theo']
@@ -27,9 +27,14 @@ let aiViewedStage='ideas';
 function guide(p){if(!p.guide)p.guide={brief:{topic:p.title,duration:10,audience:'Người xem phổ thông',style:'Kể chuyện lịch sử theo nhân vật, lựa chọn và hệ quả; giọng ấm, điềm tĩnh, mạch kể liên tục'},steps:{}};return p.guide}
 function aiStagesFor(p){return guide(p).sourceMode==='script'?['storyboard','archive','tts','design','references','production']:aiStages}
 function aiStageApproved(p,k){if(guide(p).sourceMode==='script'&&['ideas','direction','outline'].includes(k))return true;if(k==='design')return isDesignApproved(p);return k==='references'?p.scenes.length>0&&p.scenes.every(s=>s.approvals?.script&&s.approvals?.image&&(!s.angleImageMode||angleImagesComplete(p,s))&&s.assets?.image?.some(a=>a.selected)):k==='tts'?p.scenes.length>0&&p.scenes.every(s=>s.approvals?.script&&s.approvals?.audio):!!guide(p).steps[k]?.approved}
-function aiCurrent(p){return aiStagesFor(p).find(k=>!aiStageApproved(p,k))||'production'}
+// Archive search is optional, so it never becomes the suggested next step.
+function aiCurrent(p){return aiStagesFor(p).find(k=>k!=='archive'&&!aiStageApproved(p,k))||'production'}
 function aiStep(p,k){const g=guide(p);return g.steps[k]??(g.steps[k]={})}
-function aiReady(p,k){return aiStages.slice(0,aiStages.indexOf(k)).every(s=>s==='archive'||aiStageApproved(p,s))}
+const aiPrerequisites={archive:['storyboard'],tts:['storyboard'],design:['storyboard'],references:['storyboard','design'],production:['storyboard','design','references']};
+// Older and Excel-imported projects may only carry per-scene script approvals, not the guide flag.
+function storyboardApproved(p){return aiStageApproved(p,'storyboard')||p.scenes.length>0&&p.scenes.every(s=>s.approvals?.script)}
+function aiReady(p,k){const needs=aiPrerequisites[k];if(needs)return needs.every(s=>s==='storyboard'?storyboardApproved(p):aiStageApproved(p,s));return aiStages.slice(0,aiStages.indexOf(k)).every(s=>aiStageApproved(p,s))}
+function aiParallelHint(p,k){return ['tts','design','references'].includes(k)&&storyboardApproved(p)&&!aiStageApproved(p,'tts')}
 function openAssistant(pid){selected=pid;page='assistant';aiViewedStage=aiCurrent(project());guide(project());render();if(!codexRequested){codexRequested=true;send('codexStatus')}}
 function recoverAssistantState(){for(const p of state.projects){if(p.imageBatch?.kind==='angles'&&['running','stopping'].includes(p.imageBatch.status)){p.imageBatch.status='paused';delete p.imageBatch.inFlight;p.imageBatch.message='Hàng đợi ảnh góc đã dừng khi đóng app. Kiểm tra các tác vụ đã gửi trước khi chạy tiếp để tránh dùng credit trùng.';}if(['running','stopping'].includes(p.ttsBatch?.status)){p.ttsBatch.status='paused';p.ttsBatch.message='Hàng đợi đã dừng khi đóng app. Kiểm tra lịch sử ElevenLabs cho cảnh đang chạy trước khi tạo lại để tránh dùng credit trùng.';delete p.ttsBatch.inFlight;}for(const step of Object.values(p.guide?.steps||{})){if(step.status==='running'){step.status='interrupted';step.message='Yêu cầu trước bị dừng khi đóng app. Bạn có thể tạo lại.'}}}}
 function refreshAIAccountBadge(){const el=document.getElementById('ai-account');if(el){const p=project(),step=p?aiStep(p,aiViewedStage):null;el.textContent=(codexAccount.status==='signedIn'?'✓ ChatGPT '+(codexAccount.plan||'').toUpperCase()+' · ':'')+assistantModelLabel(step)}}
