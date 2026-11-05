@@ -1,0 +1,12 @@
+let short = AssistantPlan.prompt(stage:"storyboard",context:["format":"short","durationSeconds":60])
+precondition(short.contains("PHONG CÁCH SHORT") && short.contains("mỗi cảnh 3–8 giây") && short.contains("dọc 9:16") && !short.contains("trước giờ ngủ. Không tự nhận"))
+let long = AssistantPlan.prompt(stage:"storyboard",context:[:])
+precondition(long.contains("KHUNG KỂ 7 PHẦN") && !long.contains("SHORT DỌC") && long.contains("tỉ lệ 16:9"))
+let script = AssistantPlan.prompt(stage:"storyboard",context:["format":"short","sourceScript":"abc"])
+precondition(script.contains("CHẾ ĐỘ DÁN KỊCH BẢN") && script.contains("SHORT DỌC 9:16"))
+let cut = AssistantPlan.prompt(stage:"short_cut",context:["mode":"series","parts":3])
+precondition(cut.contains("mode = \"series\"") && AssistantPlan.stages.contains("short_cut"))
+let ok:[String:Any] = ["title":"t","message":"m","document":"d","sources":[],"options":[["id":"a","title":"b","description":"c"]],"scenes":[["time":"","chapter":"x|y","voice":"hook","image":"","video":"","notes":""]]]
+precondition(AssistantPlan.isValid(ok,stage:"short_cut"))
+var bad = ok; bad["options"] = [] as [[String:Any]]; precondition(!AssistantPlan.isValid(bad,stage:"short_cut"))
+print("Assistant plan passed: Short storyboard profile, 9:16 prompts, script mode, short_cut stage and validation")

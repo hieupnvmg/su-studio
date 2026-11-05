@@ -3,13 +3,15 @@ import JavaScriptCore
 let c=JSContext()!
 c.exceptionHandler={_,e in fatalError(e!.toString())}
 c.evaluateScript("var window={};var document={addEventListener:function(){}};function setInterval(){};var crypto={randomUUID:function(){return 'test-id'}};")
-for file in ["source/assistant.js", "source/script-import.js", "source/ui.js", "source/updater.js", "source/tts.js", "source/assistant-progress.js", "source/reference-images.js", "source/tts-batch.js", "source/model-picker.js", "source/native-editor.js", "source/narration-player.js", "source/media-studio.js", "source/auto-tags.js", "source/visual-bible.js", "source/dialogue.js", "source/video-references.js", "source/excel-import.js", "source/angle-images.js"] { c.setObject(try String(contentsOfFile:file,encoding:.utf8),forKeyedSubscript:"source" as NSString);c.evaluateScript("new Function(source)") }
+for file in ["source/assistant.js", "source/script-import.js", "source/ui.js", "source/updater.js", "source/tts.js", "source/assistant-progress.js", "source/reference-images.js", "source/tts-batch.js", "source/model-picker.js", "source/native-editor.js", "source/narration-player.js", "source/media-studio.js", "source/auto-tags.js", "source/short-clips.js", "source/visual-bible.js", "source/dialogue.js", "source/video-references.js", "source/excel-import.js", "source/angle-images.js"] { c.setObject(try String(contentsOfFile:file,encoding:.utf8),forKeyedSubscript:"source" as NSString);c.evaluateScript("new Function(source)") }
 for name in ["assistant.js","assistant-progress.js","model-picker.js","ui.js"] { c.evaluateScript(try String(contentsOfFile:"source/"+name,encoding:.utf8)) }
 let html=try String(contentsOfFile:"source/index.html",encoding:.utf8)
 precondition(html.range(of:"<script src=\"dialogue.js\"")!.lowerBound < html.range(of:"render();if(native)send('load')")!.lowerBound, "Load state only after workflow scripts are ready")
+let buildScript=try String(contentsOfFile:"source/build.sh",encoding:.utf8)
+for part in html.components(separatedBy:"<script src=\"").dropFirst() { let name=part.components(separatedBy:"\"")[0]; precondition(buildScript.contains("$STUDIO_SOURCE/"+name+"\""),"build.sh does not copy "+name) }
 let inline=String(html.components(separatedBy:"<script>")[1].components(separatedBy:"</script>")[0].components(separatedBy:"render();if(native)")[0])
 c.evaluateScript(inline)
-for name in ["script-import.js","updater.js","reference-images.js","narration-player.js","tts-batch.js","tts.js","media-studio.js","auto-tags.js","visual-bible.js","dialogue.js","video-references.js","excel-import.js","angle-images.js","archive-media.js"] { c.evaluateScript(try String(contentsOfFile:"source/"+name,encoding:.utf8)) }
+for name in ["script-import.js","updater.js","reference-images.js","narration-player.js","tts-batch.js","tts.js","media-studio.js","auto-tags.js","short-clips.js","visual-bible.js","dialogue.js","video-references.js","excel-import.js","angle-images.js","archive-media.js"] { c.evaluateScript(try String(contentsOfFile:"source/"+name,encoding:.utf8)) }
 c.evaluateScript("""
 const fixture={id:'p',title:'Test <script>',scenes:[{id:'s',time:'00:00–00:20',chapter:'Chương 1',voice:'Lời kể',image:'Prompt',video:'Prompt video',approvals:{script:true,audio:true},assets:{audio:[{selected:true,path:'/test.mp3',text:'Lời kể'}]}}],references:[],guide:{sourceMode:'script',sourceScript:'Lời kể',brief:{duration:10,audience:'Test'},steps:{storyboard:{approved:true,draft:{scenes:[],document:'',sources:[]}}}}};
 state.projects=[fixture];selected='p';page='assistant';aiViewedStage='tts';
@@ -233,4 +235,45 @@ window.nativeAsset({request:{project:angleProject.id,scene:angleScene.id,kind:'i
 angleProject.imageBatch.status='running';recoverAssistantState();if(angleProject.imageBatch.status!=='paused')throw Error('restart pauses angle queue');
 if(!videoReferencesView(angleProject,angleScene).includes('Prompt tạo riêng ảnh góc máy này'))throw Error('separate prompt editor shown');
 """)
-print("UI scripts parse; dashboard, overview, TTS, references, settings, escaping and workflow gate passed")
+c.evaluateScript("""
+let shortSeq=0;crypto.randomUUID=function(){return 'short-id-'+(++shortSeq)};confirm=function(){return true};save=function(){};render=function(){};toast=function(){};
+if(minutesLabel(0.5)!=='30 giây'||minutesLabel(1.5)!=='90 giây'||minutesLabel(10)!=='10 phút')throw Error('duration labels for shorts');
+const shortP={id:'sp',title:'Short',format:'short',scenes:[{id:'a',time:'00:00–00:03',chapter:'Hook',voice:'Vì sao [calm] cọc gỗ thắng thuyền chiến?',image:'Ảnh',video:'Clip',approvals:{script:true,audio:true,image:true,video:true},assets:{audio:[{selected:true,path:'/hook.mp3',text:'Vì sao [calm] cọc gỗ thắng thuyền chiến?'}],image:[{selected:true,path:'/a.png'}],video:[{selected:true,path:'/a.mp4'}]}}],references:[],guide:{sourceMode:'script',sourceScript:'x',brief:{duration:1,audience:'Test'},steps:{storyboard:{approved:true}}}};
+const longP={id:'lp',title:'Bạch Đằng',scenes:[],references:[],guide:{brief:{duration:10,audience:'Test'},steps:{}}};
+state.projects=[shortP,longP];selected='sp';
+const ctx=aiContext(shortP,'storyboard');if(ctx.format!=='short'||ctx.aspectRatio!=='9:16'||ctx.durationSeconds!==60)throw Error('AI context carries the short format');
+if(aiContext(longP,'storyboard').aspectRatio!=='16:9')throw Error('long projects stay 16:9');
+if(!visualPromptBrief(shortP).includes('9:16')||visualPromptBrief(longP).includes('9:16'))throw Error('default prompt brief follows the format');
+plenxImagePending=null;sent=[];plenxImageRequest('generate',{projectId:'sp',sceneId:'a',prompt:'x',model:'m'});if(sent[0].body.aspectRatio!=='9:16')throw Error('image requests ask for 9:16');
+plenxImagePending=null;sent=[];plenxImageRequest('models');if('aspectRatio' in sent[0].body)throw Error('model list request has no aspect');
+plenxImagePending=null;sent=[];requestVideo('generate',{projectId:'sp',sceneId:'a'});if(sent[0].body.aspectRatio!=='9:16')throw Error('video requests ask for 9:16');plenxImagePending=null;
+plenxVideoModels=[{id:'wide',modes:['i2v'],aspect_ratios:['16:9'],endpoints:['/developer/generate/video']},{id:'tall',modes:['i2v'],aspect_ratios:['16:9','9:16'],endpoints:['/developer/generate/video']}];
+if(videoCatalog(shortP).map(m=>m.id).join()!=='tall'||videoCatalog(longP).length!==2)throw Error('video models filtered by aspect');
+sent=[];timelineRequest('export');const exp=sent.find(x=>x.action==='timeline').body;
+if(exp.format!=='short'||exp.fill!=='blur'||exp.captions!==true||!exp.entries[0].captionText.includes('cọc gỗ'))throw Error('short export sends framing and captions');
+setTimelineFrame('captions',false);sent=[];timelineRequest('export');const plain=sent.find(x=>x.action==='timeline').body;if(plain.captions!==false||'captionText' in plain.entries[0])throw Error('captions can be turned off');
+if(!timelineView(shortP).includes('dọc 1080×1920'))throw Error('timeline shows vertical export');
+// Cut shorts from a long video.
+const longScene=(n,extra={})=>({id:'L'+n,time:'00:'+String((n-1)*20).padStart(2,'0')+'–00:'+String(n*20).padStart(2,'0'),chapter:'Chương '+n,voice:'Lời cảnh '+n,image:'Ảnh '+n,video:'Clip '+n,approvals:{script:true,audio:true,image:true,video:true},assets:{audio:[{selected:true,path:'/v'+n+'.mp3',text:'Lời cảnh '+n}],image:[{selected:true,path:'/i'+n+'.png'}],video:[{selected:true,path:'/c'+n+'.mp4'}]},...extra});
+const source={id:'long',title:'Trận Bạch Đằng',scenes:[1,2,3,4].map(n=>longScene(n)),references:[],visualBible:{approved:true,characters:[]},timelineEntries:[{id:'t1',sceneId:'L1',duration:18},{id:'t2',sceneId:'L2',duration:21,trimStart:1},{id:'t2c',coverOf:'L2',path:'/cover.mp4',duration:5,narrationGroup:'t2'},{id:'t3',sceneId:'L3',duration:20},{id:'t4',sceneId:'L4',duration:19}],guide:{brief:{duration:1.5,audience:'Người yêu lịch sử'},steps:{storyboard:{approved:true}}}};
+state.projects=[source];selected='long';
+if(!shortCutPanel(source).includes('Cắt short từ video này'))throw Error('long project offers short cuts');if(shortCutPanel(shortP)!=='')throw Error('shorts do not offer cutting');
+sent=[];suggestShorts();const ask=sent.find(x=>x.action==='assistantGenerate');if(!ask||ask.body.stage!=='short_cut'||ask.body.context.scenes.length!==4||ask.body.context.scenes[1].seconds!==26)throw Error('short cut request sends scenes with measured seconds');
+window.nativeAssistant({requestId:ask.body.requestId,projectId:'long',stage:'short_cut',status:'completed',result:{options:[{id:'clip-1',title:'Cọc gỗ',description:'Bất ngờ'},{id:'clip-2',title:'Lỗi',description:''}],scenes:[{chapter:'L2|L3',voice:'Vì sao cọc gỗ thắng?',notes:'Theo dõi để xem tiếp.',image:'Dọc',video:'Chuyển động',time:'50 giây'},{chapter:'L9|L3',voice:'x',notes:'y',image:'',video:'',time:''}]}});
+const cut=shortCut(source);if(cut.job.status!=='completed'||cut.candidates.length!==1||cut.candidates[0].from!==1||cut.candidates[0].to!==2)throw Error('valid ranges kept, unknown ids dropped');
+openAssistant=function(pid){selected=pid};
+const madeId=createShortProject(cut.candidates[0].id),made=state.projects.find(p=>p.id===madeId);
+if(!made)throw Error('no short '+state.projects.map(p=>p.id).join()+' '+typeof createShortProject);if(made.format!=='short'||made.title!=='Cọc gỗ'||made.scenes.length!==4)throw Error('short project has hook, two scenes and closing line '+made.title+' '+made.scenes.length);
+if(made.scenes[0].chapter!=='Hook'||made.scenes[0].voice!=='Vì sao cọc gỗ thắng?'||made.scenes[3].voice!=='Theo dõi để xem tiếp.')throw Error('hook and closing scenes');
+if(made.scenes[1].assets.audio[0].path!=='/v2.mp3'||made.scenes[1].id==='L2'||!made.scenes[1].approvals.video)throw Error('range reuses narration and clips with new ids');
+if(made.scenes[0].assets.video[0].path!=='/c3.mp4'&&made.scenes[0].assets.video[0].path!=='/c2.mp4'||made.scenes[0].approvals.audio)throw Error('hook borrows an approved clip and still needs narration');
+const te=made.timelineEntries;if(te.length!==5||te[0].sceneId!==made.scenes[0].id||te[1].trimStart!==1||te[2].coverOf!==made.scenes[1].id||te[4].sceneId!==made.scenes[3].id)throw Error('timeline edits carried over with remapped scenes');
+if(storyboardIssue(made,made.guide.steps.storyboard.approvedResult))throw Error('generated storyboard times match the brief: '+storyboardIssue(made,made.guide.steps.storyboard.approvedResult));
+if(!storyboardApproved(made)||aiCurrent(made)!=='tts')throw Error('short opens on narration for the new lines');
+if(source.scenes.length!==4||source.scenes[1].id!=='L2'||state.projects.length!==2)throw Error('long video untouched');
+selected='long';if(createShortProject(cut.candidates[0].id)!==made.id||state.projects.length!==2)throw Error('creating twice opens the same short');
+selected='long';cut.mode='series';cut.parts=2;sent=[];suggestShorts();const ask2=sent.find(x=>x.action==='assistantGenerate');if(ask2.body.context.mode!=='series'||ask2.body.context.parts!==2)throw Error('series request');
+window.nativeAssistant({requestId:ask2.body.requestId,projectId:'long',stage:'short_cut',status:'completed',result:{options:[{id:'a',title:'P1',description:''},{id:'b',title:'P2',description:''}],scenes:[{chapter:'L1|L2',voice:'Hook 1',notes:'Phần sau',image:'',video:'',time:''},{chapter:'L3|L4',voice:'Hook 2',notes:'Theo dõi',image:'',video:'',time:''}]}});
+createAllShortParts();const parts=state.projects.filter(p=>p.shortSource?.parts===2);if(parts.length!==2||!parts.some(p=>p.title==='Trận Bạch Đằng — Phần 1/2'))throw Error('series creates every part');
+""")
+print("UI scripts parse; Short format, framing, captions, short cuts and series, dashboard, overview, TTS, references, settings, escaping and workflow gate passed")

@@ -81,3 +81,12 @@ Trong Video & xuất, giữa các đoạn timeline (và ở đầu, cuối) có 
 
 MỘT CẢNH DÙNG NHIỀU HÌNH
 Khi lời kể dài hơn clip, thay vì kéo chậm clip, thêm hình phủ: bấm ＋ ngay sau một cảnh (hoặc nút "＋ Thêm hình cho lời kể cảnh này" khi chọn cảnh), giữ ô "Dùng chung lời kể của Cảnh N" và chọn video, ảnh hoặc tư liệu. Lời kể chạy liền qua cả nhóm; thời lượng nhóm được chia đều cho các hình và vẫn sửa được từng hình. "Căn theo giọng đọc" chia lại theo độ dài lời kể. Dời cảnh sẽ dời cả nhóm; hình phủ bị kéo ra khỏi nhóm hoặc mất cảnh gốc sẽ tự tách thành đoạn không lời kể. Xem thử một hình trong nhóm sẽ phát cả nhóm cùng lời kể.
+
+SHORT DỌC 9:16
+Tạo video mới → Khổ video: Short · dọc 9:16, chọn 30/45/60/90 giây hoặc 3 phút. Dùng được cả ba cách bắt đầu (cùng AI, dán kịch bản, nhập Excel). AI viết theo kiểu short: câu hook trong 3 giây đầu, cảnh 3–8 giây, câu ngắn, kết bằng câu gợi tò mò hoặc mời theo dõi; prompt ảnh/video viết cho khung dọc. Ảnh và video PlenX được tạo khổ 9:16; danh sách model chỉ hiện model hỗ trợ khổ dọc. Timeline xuất MP4 1080×1920.
+
+KHUNG HÌNH VÀ PHỤ ĐỀ KHI XUẤT
+Trong Video & xuất, dưới các nút timeline: Khung hình = Nền mờ phía sau (clip ngang đặt giữa, nền là bản mờ của chính hình đó), Cắt giữa cho đầy khung (mất hai bên) hoặc Viền đen. "In phụ đề từ lời kể" in chữ lên video, chia theo độ dài giọng đọc thực tế, nằm ở 1/3 dưới để tránh nút của TikTok/Reels/Shorts; audio tag như [calm] không hiện. Short bật sẵn nền mờ và phụ đề; video dài 16:9 cũng bật được hai tuỳ chọn này. Xem liền mạch hiển thị đúng như bản xuất.
+
+CẮT SHORT TỪ VIDEO DÀI
+Ở dự án video dài: Video & xuất → "Cắt short từ video này". Chọn "Chọn đoạn hay nhất" (độ dài và số short) hoặc "Chia thành series nhiều phần", bấm ✦ AI đề xuất đoạn cắt (dùng hạn mức Codex). Mỗi đề xuất ghi cảnh từ–đến, thời lượng, câu hook và câu kết; sửa hoặc bỏ tick nếu không muốn. "Tạo dự án short" tạo dự án dọc mới, dùng lại giọng đọc, ảnh, clip và chỉnh sửa timeline của các cảnh đó; video dài giữ nguyên. Câu hook/câu kết dùng tạm hình của cảnh trong đoạn và chỉ cần tạo giọng đọc; sau đó bấm "Căn theo giọng đọc" rồi xuất. Series có nút "Tạo cả N phần", tên dạng "… — Phần 1/3". Clip cũ là khổ ngang nên được đặt giữa trên nền mờ; muốn đầy khung thì chọn Cắt giữa hoặc tạo lại clip dọc.

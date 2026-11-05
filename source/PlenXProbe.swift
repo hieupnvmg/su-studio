@@ -118,7 +118,8 @@ final class PlenXImages: NSObject, URLSessionTaskDelegate {
         if kind == "generate" {
             guard let prompt = body["prompt"] as? String, !prompt.isEmpty, prompt.count <= 20000,
                   let model = body["model"] as? String, model.range(of:"^[A-Za-z0-9._-]+$", options:.regularExpression) != nil else { reply(["status":"error","message":"Chọn model và prompt hợp lệ."]); return }
-            path = "/generate/image"; payload = ["prompt":prompt,"model":model,"aspect_ratio":"16:9"]
+            let aspect = body["aspectRatio"] as? String == "9:16" ? "9:16" : "16:9"
+            path = "/generate/image"; payload = ["prompt":prompt,"model":model,"aspect_ratio":aspect]
             if let refs = body["referenceURLs"] as? [String], !refs.isEmpty { payload?["references_urls"] = refs }
             if let resolution = body["resolution"] as? String, !resolution.isEmpty { payload?["resolution"] = resolution }
         } else if kind == "status" {
@@ -138,7 +139,7 @@ final class PlenXImages: NSObject, URLSessionTaskDelegate {
                 reply(["status":"error","message":kind == "generate" ? "Chưa xác nhận được tác vụ PlenX (HTTP \(status)). Không tự gửi lại. Kiểm tra lịch sử PlenX trước khi tạo mới vì có thể đã dùng credit." : "Không đọc được PlenX (HTTP \(status)). Kiểm tra key, quyền API, credit hoặc thử kiểm tra lại tác vụ."]); return
             }
             if kind == "models" {
-                let models = (json["image_models"] as? [[String:Any]] ?? []).filter { ($0["aspect_ratios"] as? [String] ?? []).contains("16:9") }
+                let models = (json["image_models"] as? [[String:Any]] ?? []).filter { !Set($0["aspect_ratios"] as? [String] ?? []).isDisjoint(with:["16:9","9:16"]) }
                 reply(["status":"models","models":models,"videoModels":json["video_models"] ?? []]); return
             }
             let task = json["task_id"] as? String ?? body["taskId"] as? String ?? ""

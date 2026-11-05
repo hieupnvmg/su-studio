@@ -69,7 +69,8 @@ final class PlenXVideo: NSObject, URLSessionTaskDelegate {
                     upload(index+1,urls+[raw])
                 };return
             }
-            var payload: [String:Any] = ["model":model,"prompt":prompt,"duration":duration,"aspect_ratio":"16:9"]
+            let aspect = body["aspectRatio"] as? String == "9:16" ? "9:16" : "16:9"
+            var payload: [String:Any] = ["model":model,"prompt":prompt,"duration":duration,"aspect_ratio":aspect]
             if multi { payload["reference_images"]=urls;payload["resolution"]=quality }
             else if endpoint.hasSuffix("video-omni") { payload["input_image_url"]=urls[0];payload["resolution"]=quality }
             else { payload["mode"]="i2v";payload["start_image_url"]=urls[0];payload["quality"]=quality }
@@ -143,18 +144,19 @@ final class StudioTimeline: NSObject, NSWindowDelegate {
         }
         var output: URL?
         if kind == "export" {
-            let panel = NSSavePanel();panel.nameFieldStringValue = "Su-Studio.mp4";panel.allowedFileTypes=["mp4"]
+            let panel = NSSavePanel();panel.nameFieldStringValue = Self.frameOptions(body).short ? "Su-Studio-Short.mp4" : "Su-Studio.mp4";panel.allowedFileTypes=["mp4"]
             guard panel.runModal() == .OK,let url = panel.url else { onUpdate?(["status":"cancelled","message":"Đã hủy chọn nơi lưu."]);return };output = url
         }
         preparing = true
         onUpdate?(["status":"preparing","message":"Đang dựng timeline…"])
         DispatchQueue.global(qos:.userInitiated).async {
             do {
-                let (composition,video,mix,duration) = try self.compose(entries)
+                let (composition,video,mix,duration) = try self.compose(entries,options:body)
+                let short = Self.frameOptions(body).short
                 DispatchQueue.main.async {
                     self.preparing = false
                     if let output = output {
-                        guard let exporter = AVAssetExportSession(asset:composition,presetName:AVAssetExportPreset1920x1080) else { self.onUpdate?(["status":"error","message":"Máy này chưa tạo được bộ xuất MP4."]);return }
+                        guard let exporter = AVAssetExportSession(asset:composition,presetName:short ? AVAssetExportPresetHighestQuality : AVAssetExportPreset1920x1080) else { self.onUpdate?(["status":"error","message":"Máy này chưa tạo được bộ xuất MP4."]);return }
                         exporter.outputURL=output;exporter.outputFileType = .mp4;exporter.videoComposition=video;exporter.audioMix=mix;exporter.shouldOptimizeForNetworkUse=true
                         self.exporter=exporter
                         self.timer=Timer.scheduledTimer(withTimeInterval:0.5,repeats:true) { [weak self] _ in self?.onUpdate?(["status":"exporting","progress":Double(exporter.progress),"message":"Đang xuất MP4… \(Int(exporter.progress*100))%"] ) }
@@ -169,7 +171,7 @@ final class StudioTimeline: NSObject, NSWindowDelegate {
                         self.player?.pause();self.preview?.close()
                         let item=AVPlayerItem(asset:composition);item.videoComposition=video;item.audioMix=mix
                         let player=AVPlayer(playerItem:item);self.player=player
-                        let view=AVPlayerView(frame:NSRect(x:0,y:0,width:1000,height:600));view.player=player;view.controlsStyle = .floating
+                        let view=AVPlayerView(frame:short ? NSRect(x:0,y:0,width:440,height:782) : NSRect(x:0,y:0,width:1000,height:600));view.player=player;view.controlsStyle = .floating
                         let window=NSWindow(contentRect:view.frame,styleMask:[.titled,.closable,.resizable,.miniaturizable],backing:.buffered,defer:false)
                         window.delegate=self;window.title="Xem thử timeline · \(Int(duration)) giây";window.contentView=view;window.isReleasedWhenClosed=false;window.center();window.makeKeyAndOrderFront(nil);self.preview=window;player.play()
                         self.onUpdate?(["status":"preview","message":"Đã mở trình xem timeline với video và lời kể."])
@@ -178,8 +180,19 @@ final class StudioTimeline: NSObject, NSWindowDelegate {
             } catch { DispatchQueue.main.async { self.preparing = false; self.onUpdate?(["status":"error","message":error.localizedDescription]) } }
         }
     }
-    func compose(_ entries:[[String:Any]]) throws -> (AVMutableComposition,AVMutableVideoComposition,AVMutableAudioMix,Double) {
+    /// Output frame for a request: Short exports 1080×1920; fill is fit (black bars), blur (blurred copy behind) or crop.
+    static func frameOptions(_ options:[String:Any]) -> (short:Bool,fill:String,captions:Bool,size:CGSize) {
+        let short = options["format"] as? String == "short"
+        let requested = options["fill"] as? String ?? ""
+        let fill = ["fit","blur","crop"].contains(requested) ? requested : (short ? "blur" : "fit")
+        return (short,fill,options["captions"] as? Bool ?? short,short ? CGSize(width:1080,height:1920) : CGSize(width:1920,height:1080))
+    }
+    func compose(_ entries:[[String:Any]],options:[String:Any]=[:]) throws -> (AVMutableComposition,AVMutableVideoComposition,AVMutableAudioMix,Double) {
         let composition=AVMutableComposition(),video=AVMutableVideoComposition(),mix=AVMutableAudioMix()
+        let frame=Self.frameOptions(options),render=frame.size
+        // The built-in layer path stays for plain 16:9 exports; anything framed or captioned uses the custom compositor.
+        let custom=frame.short || frame.fill != "fit" || frame.captions
+        let style=FrameStyle(size:render,fill:frame.fill)
         var instructions:[AVVideoCompositionInstructionProtocol]=[],audioParameters:[AVAudioMixInputParameters]=[]
         var cursor=CMTime.zero,voiceEnd=CMTime.zero
         func seconds(_ n:Double)->CMTime { CMTime(seconds:n,preferredTimescale:600) }
@@ -202,6 +215,7 @@ final class StudioTimeline: NSObject, NSWindowDelegate {
                 voiceLength=try asset(path).duration.seconds
                 guard voiceLength.isFinite,voiceLength>0,voiceLength<=span+0.1 else { throw issue(next>index+1 ? "Các hình phủ của clip \(index+1) ngắn hơn lời kể. Bấm Căn theo giọng đọc hoặc tăng thời lượng các hình." : "Clip \(index+1) ngắn hơn lời kể. Bấm Căn theo giọng đọc hoặc tăng thời lượng timeline.") }
                 voiceEnd=CMTimeAdd(cursor,seconds(voiceLength))
+                if frame.captions,let text=e["captionText"] as? String { style.captions+=FrameStyle.captions(text,start:cursor.seconds,duration:voiceLength,maxWords:frame.short ? 6 : 10) }
             } else { voiceLength=0 }
             // Round UP to an output frame. Truncating the video time left the last
             // milliseconds of MP3 outside the instructions, invalidating the composition.
@@ -213,11 +227,13 @@ final class StudioTimeline: NSObject, NSWindowDelegate {
             try track.insertTimeRange(range,of:src,at:cursor);track.scaleTimeRange(CMTimeRange(start:cursor,duration:range.duration),toDuration:slot)
             let transformed=src.naturalSize.applying(src.preferredTransform),size=CGSize(width:abs(transformed.width),height:abs(transformed.height))
             guard size.width>0,size.height>0 else { throw issue("Kích thước clip không hợp lệ.") }
-            let scale=min(1920/size.width,1080/size.height),rect=CGRect(origin:.zero,size:src.naturalSize).applying(src.preferredTransform)
+            if custom { instructions.append(FrameInstruction(timeRange:CMTimeRange(start:cursor,duration:slot),trackID:track.trackID,transform:src.preferredTransform,style:style)) } else {
+            let scale=min(render.width/size.width,render.height/size.height),rect=CGRect(origin:.zero,size:src.naturalSize).applying(src.preferredTransform)
             var transform=src.preferredTransform.concatenating(CGAffineTransform(translationX:-rect.origin.x,y:-rect.origin.y))
-            transform=transform.concatenating(CGAffineTransform(scaleX:scale,y:scale)).concatenating(CGAffineTransform(translationX:(1920-size.width*scale)/2,y:(1080-size.height*scale)/2))
+            transform=transform.concatenating(CGAffineTransform(scaleX:scale,y:scale)).concatenating(CGAffineTransform(translationX:(render.width-size.width*scale)/2,y:(render.height-size.height*scale)/2))
             let layer=AVMutableVideoCompositionLayerInstruction(assetTrack:track);layer.setTransform(transform,at:cursor)
             let instruction=AVMutableVideoCompositionInstruction();instruction.timeRange=CMTimeRange(start:cursor,duration:slot);instruction.layerInstructions=[layer];instruction.backgroundColor=NSColor.black.cgColor;instructions.append(instruction)
+            }
             if e["includeOriginalAudio"] as? Bool == true,let sound=source.tracks(withMediaType:.audio).first,let audio=composition.addMutableTrack(withMediaType:.audio,preferredTrackID:kCMPersistentTrackID_Invalid) {
                 try audio.insertTimeRange(range,of:sound,at:cursor);audio.scaleTimeRange(CMTimeRange(start:cursor,duration:range.duration),toDuration:slot)
                 let params=AVMutableAudioMixInputParameters(track:audio);params.setVolume(0.35,at:cursor);audioParameters.append(params)
@@ -233,8 +249,146 @@ final class StudioTimeline: NSObject, NSWindowDelegate {
             }
             cursor=CMTimeAdd(cursor,slot)
         }
-        video.renderSize=CGSize(width:1920,height:1080);video.frameDuration=CMTime(value:1,timescale:30);video.instructions=instructions;mix.inputParameters=audioParameters
+        if custom { video.customVideoCompositorClass=StudioCompositor.self }
+        video.renderSize=render;video.frameDuration=CMTime(value:1,timescale:30);video.instructions=instructions;mix.inputParameters=audioParameters
         guard video.isValid(for:composition,timeRange:CMTimeRange(start:.zero,duration:composition.duration),validationDelegate:nil) else { throw issue("Chưa căn được khung hình với lời kể. Hãy căn lại thời lượng trước khi xem thử.") }
         return(composition,video,mix,cursor.seconds)
+    }
+}
+
+// MARK: - Framing and burned-in captions (Short 9:16, blurred fill, subtitles)
+
+struct TimedCaption { let start: Double; let end: Double; let text: String }
+
+final class FrameStyle {
+    let size: CGSize
+    let fill: String
+    var captions: [TimedCaption] = []
+    init(size: CGSize, fill: String) { self.size = size; self.fill = fill }
+    var vertical: Bool { size.height > size.width }
+    func caption(at seconds: Double) -> TimedCaption? { captions.first { seconds >= $0.start && seconds < $0.end } }
+
+    /// Splits narration into short readable chunks timed by character weight across the voice duration.
+    static func captions(_ text: String, start: Double, duration: Double, maxWords: Int) -> [TimedCaption] {
+        let clean = text.replacingOccurrences(of: "\\[[^\\]]*\\]", with: " ", options: .regularExpression)
+        let words = clean.split(whereSeparator: { $0.isWhitespace }).map(String.init)
+        guard !words.isEmpty, duration.isFinite, duration > 0, maxWords > 0 else { return [] }
+        func ends(_ word: String, _ marks: String) -> Bool { word.last.map { marks.contains($0) } ?? false }
+        var chunks: [[String]] = [], current: [String] = []
+        for word in words {
+            current.append(word)
+            if current.count >= maxWords || ends(word, ".,;:!?…") && current.count >= max(2, maxWords / 2) || ends(word, ".!?…") { chunks.append(current); current = [] }
+        }
+        if !current.isEmpty { if current.count == 1, let last = chunks.indices.last, chunks[last].count < maxWords + 2 { chunks[last] += current } else { chunks.append(current) } }
+        let weights = chunks.map { chunk -> Double in
+            let last = chunk.last ?? ""
+            return Double(chunk.joined(separator: " ").count) + (ends(last, ".!?…") ? 6 : ends(last, ",;:") ? 3 : 0)
+        }
+        let total = weights.reduce(0, +)
+        var cursor = start, result: [TimedCaption] = []
+        for (chunk, weight) in zip(chunks, weights) {
+            let length = duration * weight / total
+            result.append(TimedCaption(start: cursor, end: cursor + length, text: chunk.joined(separator: " ")))
+            cursor += length
+        }
+        return result
+    }
+}
+
+final class FrameInstruction: NSObject, AVVideoCompositionInstructionProtocol {
+    let timeRange: CMTimeRange
+    let enablePostProcessing = false
+    let containsTweening = true
+    let requiredSourceTrackIDs: [NSValue]?
+    let passthroughTrackID = kCMPersistentTrackID_Invalid
+    let trackID: CMPersistentTrackID
+    let orientation: CGImagePropertyOrientation
+    let style: FrameStyle
+    init(timeRange: CMTimeRange, trackID: CMPersistentTrackID, transform: CGAffineTransform, style: FrameStyle) {
+        self.timeRange = timeRange; self.trackID = trackID; self.style = style
+        requiredSourceTrackIDs = [NSNumber(value: trackID)]
+        switch (transform.a, transform.b, transform.c, transform.d) {
+        case (0, 1, -1, 0): orientation = .right
+        case (0, -1, 1, 0): orientation = .left
+        case (-1, 0, 0, -1): orientation = .down
+        default: orientation = .up
+        }
+    }
+}
+
+final class StudioCompositor: NSObject, AVVideoCompositing {
+    let sourcePixelBufferAttributes: [String: Any]? = [kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_32BGRA]
+    let requiredPixelBufferAttributesForRenderContext: [String: Any] = [kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_32BGRA]
+    private let queue = DispatchQueue(label: "su-studio.compositor")
+    private let context = CIContext(options: [.cacheIntermediates: false])
+    private var captionCache: [String: CIImage] = [:]
+    func renderContextChanged(_ newRenderContext: AVVideoCompositionRenderContext) {}
+    func cancelAllPendingVideoCompositionRequests() { queue.sync {} }
+    func startRequest(_ request: AVAsynchronousVideoCompositionRequest) {
+        queue.async { autoreleasepool {
+            guard let instruction = request.videoCompositionInstruction as? FrameInstruction, let output = request.renderContext.newPixelBuffer() else {
+                request.finish(with: NSError(domain: "StudioTimeline", code: 2, userInfo: [NSLocalizedDescriptionKey: "Không dựng được khung hình."])); return
+            }
+            let frame = self.render(instruction, source: request.sourceFrame(byTrackID: instruction.trackID), at: request.compositionTime.seconds)
+            self.context.render(frame, to: output, bounds: CGRect(origin: .zero, size: instruction.style.size), colorSpace: CGColorSpaceCreateDeviceRGB())
+            request.finish(withComposedVideoFrame: output)
+        } }
+    }
+    func render(_ instruction: FrameInstruction, source: CVPixelBuffer?, at seconds: Double) -> CIImage {
+        let style = instruction.style, size = style.size, canvasRect = CGRect(origin: .zero, size: size)
+        var canvas = CIImage(color: CIColor(red: 0, green: 0, blue: 0)).cropped(to: canvasRect)
+        if let source = source {
+            var image = CIImage(cvPixelBuffer: source).oriented(instruction.orientation)
+            image = image.transformed(by: CGAffineTransform(translationX: -image.extent.minX, y: -image.extent.minY))
+            let width = image.extent.width, height = image.extent.height
+            if width > 0, height > 0 {
+                func placed(_ img: CIImage, _ scale: CGFloat) -> CIImage {
+                    img.transformed(by: CGAffineTransform(scaleX: scale, y: scale))
+                        .transformed(by: CGAffineTransform(translationX: (size.width - width * scale) / 2, y: (size.height - height * scale) / 2))
+                }
+                let fit = min(size.width / width, size.height / height), cover = max(size.width / width, size.height / height)
+                if style.fill == "crop" { canvas = placed(image, cover).cropped(to: canvasRect).composited(over: canvas) }
+                else {
+                    if style.fill == "blur", abs(width / height - size.width / size.height) > 0.02 {
+                        // Blur a quarter-size copy and scale it back up: same look, a fraction of the cost.
+                        let small = placed(image, cover / 4).transformed(by: CGAffineTransform(translationX: -(size.width - size.width / 4) / 2, y: -(size.height - size.height / 4) / 2))
+                        let blurred = small.clampedToExtent().applyingGaussianBlur(sigma: 10)
+                            .applyingFilter("CIColorControls", parameters: [kCIInputBrightnessKey: -0.12, kCIInputSaturationKey: 1.1])
+                            .transformed(by: CGAffineTransform(scaleX: 4, y: 4)).cropped(to: canvasRect)
+                        canvas = blurred.composited(over: canvas)
+                    }
+                    canvas = placed(image, fit).composited(over: canvas)
+                }
+            }
+        }
+        if let caption = style.caption(at: seconds), let text = captionImage(caption.text, style: style) {
+            let centerY = size.height * (style.vertical ? 0.30 : 0.11)
+            canvas = text.transformed(by: CGAffineTransform(translationX: (size.width - text.extent.width) / 2, y: max(0, centerY - text.extent.height / 2))).composited(over: canvas)
+        }
+        return canvas.cropped(to: canvasRect)
+    }
+    private func captionImage(_ text: String, style: FrameStyle) -> CIImage? {
+        if let cached = captionCache[text] { return cached }
+        let size = style.size, fontSize: CGFloat = style.vertical ? 68 : 52, maxWidth = size.width * (style.vertical ? 0.84 : 0.78), pad: CGFloat = 28
+        let paragraph = NSMutableParagraphStyle(); paragraph.alignment = .center; paragraph.lineBreakMode = .byWordWrapping
+        let font = NSFont.systemFont(ofSize: fontSize, weight: .heavy)
+        let shadow = NSShadow(); shadow.shadowColor = NSColor.black.withAlphaComponent(0.65); shadow.shadowBlurRadius = 14; shadow.shadowOffset = NSSize(width: 0, height: -3)
+        let base: [NSAttributedString.Key: Any] = [.font: font, .paragraphStyle: paragraph]
+        let fill = NSAttributedString(string: text, attributes: base.merging([.foregroundColor: NSColor.white]) { $1 })
+        let stroke = NSAttributedString(string: text, attributes: base.merging([.foregroundColor: NSColor.black, .strokeColor: NSColor.black, .strokeWidth: 16, .shadow: shadow]) { $1 })
+        let bounds = fill.boundingRect(with: NSSize(width: maxWidth, height: size.height), options: [.usesLineFragmentOrigin, .usesFontLeading])
+        let width = Int(ceil(maxWidth + pad * 2)), height = Int(ceil(bounds.height + pad * 2))
+        guard let cg = CGContext(data: nil, width: width, height: height, bitsPerComponent: 8, bytesPerRow: 0, space: CGColorSpaceCreateDeviceRGB(), bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue) else { return nil }
+        NSGraphicsContext.saveGraphicsState()
+        NSGraphicsContext.current = NSGraphicsContext(cgContext: cg, flipped: false)
+        let rect = NSRect(x: pad, y: pad, width: maxWidth, height: ceil(bounds.height))
+        stroke.draw(with: rect, options: [.usesLineFragmentOrigin, .usesFontLeading])
+        fill.draw(with: rect, options: [.usesLineFragmentOrigin, .usesFontLeading])
+        NSGraphicsContext.restoreGraphicsState()
+        guard let made = cg.makeImage() else { return nil }
+        let image = CIImage(cgImage: made)
+        if captionCache.count > 400 { captionCache.removeAll() }
+        captionCache[text] = image
+        return image
     }
 }

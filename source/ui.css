@@ -53,3 +53,27 @@ label>input[type=checkbox],label>input[type=radio]{width:auto;margin:0;accent-co
 .timeline-audio>.timeline-narration-span{background:linear-gradient(90deg,#c6dccb,#d7e7da);border-left:3px solid var(--green);font-weight:600}
 .timeline-group-note{display:flex;flex-wrap:wrap;align-items:center;gap:10px;margin:12px 0 4px;padding:10px 12px;border-radius:8px;background:#e9f0e3;font-size:12px;color:#355241}
 .timeline-cover-choice{margin:12px 0 2px;font-size:13px}
+
+/* Short clips: frame controls on the timeline, AI-suggested cuts from a long video */
+.timeline-frame { align-items: center; gap: 14px; }
+.timeline-frame label { display: inline-flex; align-items: center; gap: 8px; font-size: 14px; }
+.timeline-frame select { width: auto; }
+.short-cut .row label { display: inline-flex; align-items: center; gap: 8px; font-size: 14px; }
+.short-cut .row select { width: auto; }
+.short-candidate { border: 1px solid var(--line); border-radius: 14px; padding: 16px 18px; margin-top: 14px; background: var(--bg); display: grid; gap: 10px; }
+.short-candidate h3 { margin: 0 0 4px; }
+.short-candidate textarea { min-height: 64px; }
+.short-candidate .field label { display: flex; align-items: center; gap: 8px; }
+.format-picker { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin: 14px 0 8px; }
+.format-option { display: flex; align-items: center; gap: 14px; padding: 14px 16px; border: 1.5px solid var(--line); border-radius: 14px; background: transparent; text-align: left; box-shadow: none; color: var(--ink); }
+.format-option b { display: block; font-size: 16px; }
+.format-option small { display: block; color: var(--muted); font-size: 12.5px; font-weight: 500; margin-top: 2px; }
+.format-option:hover { border-color: var(--green); }
+.format-option.active { border-color: var(--green); background: color-mix(in srgb, var(--green) 14%, transparent); box-shadow: 0 0 0 1px var(--green) inset; }
+.format-option.active b { color: var(--green); }
+.format-option.active b::after { content: " ✓"; }
+.format-option:focus:not(.active) { background: transparent; }
+.format-frame { flex: none; border: 2px solid currentColor; border-radius: 4px; opacity: .55; }
+.format-frame.wide { width: 34px; height: 20px; }
+.format-frame.tall { width: 18px; height: 30px; }
+.format-option.active .format-frame { opacity: 1; color: var(--green); }

@@ -72,4 +72,47 @@ assert(tightDuration>=AVURLAsset(url:URL(fileURLWithPath:voice)).duration.second
 assert(tightVideo.isValid(for:tightComposition,timeRange:CMTimeRange(start:.zero,duration:tightComposition.duration),validationDelegate:nil))
 var short=grouped;short[1]["duration"]=0.2
 do { _=try timeline.compose(short);fatalError("group shorter than voice accepted") } catch {}
-print("Timeline export passed: MP4 1080p, 4 seconds, red/portrait-blue frames, narration, trim, retiming, narration across cover visuals and invalid input guards")
+// Short 9:16: blurred fill behind landscape clips, centre crop, captions burned in.
+let chunks=FrameStyle.captions("[calm] Năm 938, Ngô Quyền đóng cọc trên sông Bạch Đằng. Quân Nam Hán thua to!",start:2,duration:6,maxWords:6)
+assert(chunks.count>=3 && abs(chunks.first!.start-2)<0.001 && abs(chunks.last!.end-8)<0.001,"captions cover the voice")
+assert(!chunks.contains { $0.text.contains("[") },"audio tags are not shown")
+assert(chunks.allSatisfy { $0.text.split(separator:" ").count<=8 })
+func exportShort(_ items:[[String:Any]],_ options:[String:Any],_ name:String) throws -> AVURLAsset {
+ let (c,v,m,_)=try timeline.compose(items,options:options)
+ assert(v.renderSize==CGSize(width:1080,height:1920));assert(v.customVideoCompositorClass != nil)
+ let out=testRoot.appendingPathComponent(name);try? FileManager.default.removeItem(at:out)
+ let e=AVAssetExportSession(asset:c,presetName:AVAssetExportPresetHighestQuality)!
+ e.outputURL=out;e.outputFileType = .mp4;e.videoComposition=v;e.audioMix=m
+ var finished=false;e.exportAsynchronously {finished=true}
+ let limit=Date().addingTimeInterval(90)
+ while !finished && Date()<limit {RunLoop.current.run(until:Date().addingTimeInterval(0.1))}
+ assert(e.status == .completed,e.error?.localizedDescription ?? "short export timeout")
+ return AVURLAsset(url:out)
+}
+func pixel(_ asset:AVURLAsset,_ t:Double,_ x:Int,_ y:Int) throws -> NSColor {
+ let g=AVAssetImageGenerator(asset:asset);g.appliesPreferredTrackTransform=true;g.requestedTimeToleranceBefore = .zero;g.requestedTimeToleranceAfter = .zero
+ return NSBitmapImageRep(cgImage:try g.copyCGImage(at:CMTime(seconds:t,preferredTimescale:600),actualTime:nil)).colorAt(x:x,y:y)!.usingColorSpace(.deviceRGB)!
+}
+var shortEntries=entries;shortEntries[0]["captionText"]="Xin chào Việt Nam"
+let shortAsset=try exportShort(shortEntries,["format":"short"],"short.mp4")
+let shortTrack=shortAsset.tracks(withMediaType:.video).first!
+let shortSize=shortTrack.naturalSize.applying(shortTrack.preferredTransform)
+assert(abs(abs(shortSize.width)-1080)<2 && abs(abs(shortSize.height)-1920)<2,"short exports 1080x1920, got \(shortSize)")
+assert(!shortAsset.tracks(withMediaType:.audio).isEmpty)
+let centre=try pixel(shortAsset,0.5,540,960);assert(centre.redComponent>0.7 && centre.blueComponent<0.3,"landscape clip centred")
+let top=try pixel(shortAsset,0.5,540,120);assert(top.redComponent>0.3 && top.blueComponent<0.3,"blurred fill instead of black bars")
+let portrait=try pixel(shortAsset,2.5,540,960);assert(portrait.blueComponent>0.7,"portrait clip fills the frame")
+var white=false
+let g=AVAssetImageGenerator(asset:shortAsset);g.appliesPreferredTrackTransform=true;g.requestedTimeToleranceBefore = .zero;g.requestedTimeToleranceAfter = .zero
+let captionFrame=NSBitmapImageRep(cgImage:try g.copyCGImage(at:CMTime(seconds:0.5,preferredTimescale:600),actualTime:nil))
+for y in stride(from:1280,through:1410,by:4) { for x in stride(from:150,through:930,by:3) { let c=captionFrame.colorAt(x:x,y:y)!.usingColorSpace(.deviceRGB)!; if c.redComponent>0.85 && c.greenComponent>0.85 && c.blueComponent>0.85 { white=true } } }
+assert(white,"caption is burned into the lower third")
+let noCaption=NSBitmapImageRep(cgImage:try g.copyCGImage(at:CMTime(seconds:2.5,preferredTimescale:600),actualTime:nil))
+var whiteLater=false
+for y in stride(from:1280,through:1410,by:4) { for x in stride(from:150,through:930,by:3) { let c=noCaption.colorAt(x:x,y:y)!.usingColorSpace(.deviceRGB)!; if c.redComponent>0.85 && c.greenComponent>0.85 && c.blueComponent>0.85 { whiteLater=true } } }
+assert(!whiteLater,"entries without captionText show no caption")
+let cropAsset=try exportShort([entries[0]],["format":"short","fill":"crop","captions":false],"crop.mp4")
+let corner=try pixel(cropAsset,0.5,40,60);assert(corner.redComponent>0.7 && corner.blueComponent<0.3,"crop fills the whole frame")
+// Plain 16:9 stays on the built-in layer path.
+let (_,plainVideo,_,_)=try timeline.compose(entries);assert(plainVideo.customVideoCompositorClass == nil)
+print("Timeline export passed: MP4 1080p, Short 1080x1920 with blurred fill, crop and burned-in captions, 4 seconds, red/portrait-blue frames, narration, trim, retiming, narration across cover visuals and invalid input guards")
