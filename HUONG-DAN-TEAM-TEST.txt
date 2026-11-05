@@ -66,3 +66,6 @@ Tạo video → Nhập storyboard từ Excel (.xlsx) → Chọn file. App đọc
 
 TẠO RIÊNG ẢNH TỪNG GÓC
 Mở cảnh trong Ảnh tham chiếu hoặc Video & xuất → Nhiều ảnh có thứ tự (R2V) → Tạo riêng từng ảnh góc máy. Mỗi góc có prompt, phiên bản, nhập ảnh và duyệt riêng. Thêm góc rồi điền prompt; có thể tạo từng ảnh hoặc Tạo tất cả ảnh còn thiếu của cảnh. Chạy lần lượt, dùng credit riêng từng ảnh, dùng chung ảnh nhân vật chuẩn đã duyệt; dừng khi lỗi và không tự duyệt. Duyệt đủ ảnh góc trước khi tạo video. Ảnh đầu danh sách thành ảnh chính; ảnh cũ vẫn giữ. Nếu đóng app, kiểm tra tác vụ đã gửi trước khi chạy tiếp.
+
+TẢI TƯ LIỆU THẬT
+Ảnh tư liệu được dựng thành đoạn giữ hình ngay trên macOS, không cần FFmpeg; chỉ video WebM/OGV mới cần FFmpeg. Kết quả tìm web từ báo lớn (VnExpress, Dân trí, Thanh Niên, Znews, Tuổi Trẻ…), bảo tàng và kho lưu trữ có thể tải thẳng vào cảnh. App gửi trang nguồn khi tải để tránh bị máy chủ chặn. Nếu vẫn không có nút Tải vào cảnh, app ghi rõ lý do (trang xem, luồng phát, nguồn chặn tải hoặc chưa rõ giấy phép); mở trang nguồn, tải thủ công rồi dùng Nhập tệp đã tải.

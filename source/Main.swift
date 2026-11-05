@@ -236,6 +236,7 @@ final class Studio: NSObject, NSApplicationDelegate, WKScriptMessageHandler, WKU
             let url = body["url"] as? String ?? ""
             let archiveRoot = root
             let fromWeb = body["web"] as? Bool == true
+            let referer = body["referer"] as? String
             var localFile: URL?
             if action == "archiveImport" {
                 let panel = NSOpenPanel()
@@ -259,7 +260,7 @@ final class Studio: NSObject, NSApplicationDelegate, WKScriptMessageHandler, WKU
                     } else if let importURL = importURL {
                         result = try ArchiveMedia.importFile(importURL, kind: kind, root: archiveRoot)
                     } else {
-                        result = try await ArchiveMedia.download(url, kind: kind, root: archiveRoot, web: fromWeb)
+                        result = try await ArchiveMedia.download(url, kind: kind, root: archiveRoot, web: fromWeb, referer: referer)
                     }
                 } catch {
                     result = ["error": error.localizedDescription]

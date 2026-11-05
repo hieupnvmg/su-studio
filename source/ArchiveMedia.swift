@@ -291,14 +291,43 @@ enum ArchiveMedia {
     }
 
     // Only fetch from publishers and media hosts supported by the native importer.
-    private static func allowedWebURL(_ url: URL) -> Bool {
+    static func allowedWebURL(_ url: URL) -> Bool {
         guard url.scheme == "https", url.user == nil, url.password == nil,
               url.port == nil || url.port == 443, let host = url.host?.lowercased() else { return false }
-        let domains = ["vov.vn", "vovmedia.vn", "tuoitre.vn", "tuoitre.com.vn", "vtv.vn", "vtvcdn.net",
-                       "vietnamnet.vn", "vnncdn.net", "baochinhphu.vn", "mediacdn.vn", "sggp.org.vn",
-                       "nhandan.vn", "vnanet.vn",
-                       "time.com", "wikimedia.org", "vnexpress.net", "qdnd.vn"]
-        return allowedMediaURL(url) || domains.contains { host == $0 || host.hasSuffix("." + $0) }
+        return allowedMediaURL(url) || webDomains.contains { host == $0 || host.hasSuffix("." + $0) }
+    }
+
+    // Publishers, archives and the CDNs that serve their media files. Images on news sites are often
+    // hosted on a separate CDN domain (e.g. VnExpress → vnecdn.net), so both must be listed.
+    static let webDomains = [
+        // Vietnamese press, broadcasters and their CDNs
+        "vov.vn", "vovmedia.vn", "vovworld.vn", "tuoitre.vn", "tuoitre.com.vn", "vtv.vn", "vtvcdn.net",
+        "vietnamnet.vn", "vnncdn.net", "baochinhphu.vn", "chinhphu.vn", "mediacdn.vn", "sggp.org.vn",
+        "nhandan.vn", "vnanet.vn", "vietnamplus.vn", "vnexpress.net", "vnecdn.net", "qdnd.vn",
+        "dantri.com.vn", "dantricdn.com", "thanhnien.vn", "thanhnien.com.vn","laodong.vn", "znews.vn", "zingnews.vn", "zingcdn.me",
+        "cand.com.vn", "hanoimoi.vn", "baoquocte.vn", "tienphong.vn", "nld.com.vn", "plo.vn",
+        "baotintuc.vn", "vietnam.vn", "nhiepanhdoisong.vn", "baoxaydung.vn", "kienthuc.net.vn",
+        // Vietnamese museums, archives and heritage bodies
+        "baotanglichsu.vn", "baotanglichsuquocgia.vn", "archives.org.vn", "archives.gov.vn",
+        "hoangthanhthanglong.vn", "hueworldheritage.org.vn", "dsvh.gov.vn", "nlv.gov.vn",
+        // International archives, libraries and photo agencies
+        "wikimedia.org", "wikipedia.org", "time.com", "loc.gov", "archives.gov", "si.edu",
+        "bnf.fr", "europeana.eu", "staticflickr.com", "flickr.com", "awm.gov.au", "iwm.org.uk",
+        "rmg.co.uk", "britishmuseum.org", "rijksmuseum.nl", "ecpad.fr", "archive.org"
+    ]
+
+    private static let browserUserAgent =
+        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Safari/605.1.15 SuStudio/0.14"
+
+    /// Request with a browser-compatible User-Agent and the source page as Referer: many news CDNs reject
+    /// requests without them (hotlink protection) even though the file opens fine in a browser.
+    private static func webRequest(_ url: URL, referer: String?, timeout: TimeInterval) -> URLRequest {
+        var request = URLRequest(url: url, timeoutInterval: timeout)
+        request.setValue(browserUserAgent, forHTTPHeaderField: "User-Agent")
+        if let referer, let page = URL(string: referer), page.scheme == "https", page.user == nil, page.password == nil {
+            request.setValue(page.absoluteString, forHTTPHeaderField: "Referer")
+        }
+        return request
     }
 
     private final class WebRedirects: NSObject, URLSessionTaskDelegate {
@@ -314,9 +343,10 @@ enum ArchiveMedia {
             for (index, item) in items.prefix(24).enumerated() {
                 group.addTask {
                     var result = item
-                    var direct = await webMedia(item["mediaURL"] ?? "", kind: kind)
+                    let referer = item["source"]
+                    var direct = await webMedia(item["mediaURL"] ?? "", kind: kind, referer: referer)
                     if direct == nil, kind == "image", let preview = item["thumbnail"], preview != item["mediaURL"] {
-                        direct = await webMedia(preview, kind: kind)
+                        direct = await webMedia(preview, kind: kind, referer: referer)
                     }
                     if direct == nil, let source = item["source"] {
                         direct = await pageMedia(source, kind: kind)
@@ -339,7 +369,7 @@ enum ArchiveMedia {
         guard let url = URL(string: raw), allowedWebURL(url) else { return nil }
         let session = URLSession(configuration: .ephemeral, delegate: WebRedirects(), delegateQueue: nil)
         defer { session.invalidateAndCancel() }
-        let request = URLRequest(url: url, timeoutInterval: 8)
+        let request = webRequest(url, referer: nil, timeout: 8)
         guard let (bytes, response) = try? await session.bytes(for: request),
               let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode),
               http.mimeType == "text/html", let page = http.url else { return nil }
@@ -365,22 +395,29 @@ enum ArchiveMedia {
             guard properties.contains(fields["property"] ?? fields["name"] ?? ""),
                   let content = fields["content"],
                   let file = URL(string: content.replacingOccurrences(of: "&amp;", with: "&"), relativeTo: page)?.absoluteURL else { continue }
-            if let verified = await webMedia(file.absoluteString, kind: kind) { return verified }
+            if let verified = await webMedia(file.absoluteString, kind: kind, referer: page.absoluteString) { return verified }
         }
         return nil
     }
 
-    static func webMedia(_ raw: String, kind: String) async -> String? {
+    /// Confirms that a web URL serves an image/video file. Tries HEAD first, then a 1-byte ranged GET,
+    /// because many CDNs reject HEAD (401/403/405) or omit the content type on it.
+    static func webMedia(_ raw: String, kind: String, referer: String? = nil) async -> String? {
         guard let url = URL(string: raw), allowedWebURL(url) else { return nil }
-        var request = URLRequest(url: url, timeoutInterval: 8)
-        request.httpMethod = "HEAD"
         let session = URLSession(configuration: .ephemeral, delegate: WebRedirects(), delegateQueue: nil)
-        defer { session.finishTasksAndInvalidate() }
-        guard let (_, response) = try? await session.data(for: request),
-              let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode),
-              http.expectedContentLength <= 250_000_000,
-              let mime = http.mimeType?.lowercased(), supportedWebMIME(mime, kind: kind) else { return nil }
-        return url.absoluteString
+        defer { session.invalidateAndCancel() }
+        func accepts(_ response: URLResponse?) -> Bool {
+            guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode),
+                  http.statusCode == 206 || http.expectedContentLength <= 250_000_000 else { return false }
+            return acceptableWebType(http.mimeType, url: http.url ?? url, kind: kind)
+        }
+        var head = webRequest(url, referer: referer, timeout: 8)
+        head.httpMethod = "HEAD"
+        if accepts(try? await session.data(for: head).1) { return url.absoluteString }
+        var probe = webRequest(url, referer: referer, timeout: 8)
+        probe.setValue("bytes=0-0", forHTTPHeaderField: "Range")
+        if let (_, response) = try? await session.bytes(for: probe), accepts(response) { return url.absoluteString }
+        return nil
     }
 
     private static func supportedWebMIME(_ mime: String, kind: String) -> Bool {
@@ -388,21 +425,47 @@ enum ArchiveMedia {
         return ["video/mp4", "video/quicktime", "video/webm", "video/ogg", "video/x-m4v"].contains(mime)
     }
 
-    static func download(_ raw: String, kind: String, root: URL, web: Bool = false) async throws -> [String: Any] {
+    /// Some CDNs serve media as a generic binary type; accept it only when the file extension matches the
+    /// requested kind. `importFile` still decodes the file before it reaches the project.
+    static func acceptableWebType(_ mime: String?, url: URL, kind: String) -> Bool {
+        let type = (mime ?? "").lowercased()
+        if supportedWebMIME(type, kind: kind) { return true }
+        guard ["application/octet-stream", "binary/octet-stream", ""].contains(type) else { return false }
+        let ext = url.pathExtension.lowercased()
+        return kind == "image" ? ["jpg", "jpeg", "png", "webp", "gif", "avif", "tif", "tiff"].contains(ext)
+            : ["mp4", "mov", "m4v", "webm", "ogv"].contains(ext)
+    }
+
+    static func download(_ raw: String, kind: String, root: URL, web: Bool = false, referer: String? = nil) async throws -> [String: Any] {
         let allowed = web ? allowedWebURL : allowedMediaURL
         guard let url = URL(string: raw), allowed(url),
               ["image", "video"].contains(kind) else { throw error("Đường dẫn tệp ngoài các nguồn được hỗ trợ.") }
-        var request = URLRequest(url: url, timeoutInterval: 60)
-        request.setValue("SuStudio/0.14 (https://github.com/hieupnvmg/su-studio)", forHTTPHeaderField: "User-Agent")
+        var request = web ? webRequest(url, referer: referer, timeout: 60) : URLRequest(url: url, timeoutInterval: 60)
+        if !web { request.setValue("SuStudio/0.14 (https://github.com/hieupnvmg/su-studio)", forHTTPHeaderField: "User-Agent") }
         let session = web ? URLSession(configuration: .ephemeral, delegate: WebRedirects(), delegateQueue: nil) : .shared
         defer { if web { session.finishTasksAndInvalidate() } }
-        let (temporary, response) = try await session.download(for: request)
+        let temporary: URL, response: URLResponse
+        do {
+            (temporary, response) = try await session.download(for: request)
+        } catch let failure as URLError where failure.code == .timedOut {
+            throw error("Tải tệp tư liệu quá lâu. Kiểm tra mạng rồi thử lại, hoặc mở trang nguồn để tải thủ công.")
+        } catch {
+            throw ArchiveMedia.error("Không kết nối được tới máy chủ tư liệu. Mở trang nguồn để tải thủ công rồi dùng Nhập tệp đã tải.")
+        }
         defer { try? FileManager.default.removeItem(at: temporary) }
-        guard let http = response as? HTTPURLResponse, http.statusCode == 200,
-              http.url.map(allowed) == true,
-              !web || supportedWebMIME(http.mimeType ?? "", kind: kind),
-              (try temporary.resourceValues(forKeys: [.fileSizeKey]).fileSize ?? Int.max) <= 250_000_000 else {
-            throw error("Không tải được tệp tư liệu hoặc tệp vượt 250 MB.")
+        guard let http = response as? HTTPURLResponse, http.url.map(allowed) == true else {
+            throw error("Tệp chuyển hướng tới nguồn ngoài danh sách hỗ trợ. Mở trang nguồn để tải thủ công.")
+        }
+        guard http.statusCode == 200 else {
+            throw error(http.statusCode == 401 || http.statusCode == 403
+                ? "Máy chủ nguồn chặn tải trực tiếp (HTTP \(http.statusCode)). Mở trang nguồn để tải thủ công rồi dùng Nhập tệp đã tải."
+                : "Máy chủ nguồn trả lỗi HTTP \(http.statusCode) khi tải tệp tư liệu.")
+        }
+        guard !web || acceptableWebType(http.mimeType, url: http.url ?? url, kind: kind) else {
+            throw error("Đường dẫn này không phải tệp \(kind == "image" ? "ảnh" : "video") (\(http.mimeType ?? "không rõ loại")). Có thể đây là trang xem hoặc luồng phát.")
+        }
+        guard (try temporary.resourceValues(forKeys: [.fileSizeKey]).fileSize ?? Int.max) <= 250_000_000 else {
+            throw error("Tệp tư liệu vượt 250 MB.")
         }
         return try importFile(temporary, kind: kind, root: root, fileExtension: http.url?.pathExtension ?? url.pathExtension)
     }
@@ -445,21 +508,86 @@ enum ArchiveMedia {
     }
 
     static func convert(_ source: URL, to output: URL, still: Bool) throws {
+        if still { return try stillClip(source, to: output) }
         guard let executable = ["/opt/homebrew/bin/ffmpeg", "/usr/local/bin/ffmpeg", "/opt/local/bin/ffmpeg"]
             .first(where: { FileManager.default.isExecutableFile(atPath: $0) }) else {
-            throw error("Máy cần FFmpeg để đưa ảnh hoặc video WebM vào timeline.")
+            throw error("Máy cần FFmpeg để đưa video WebM/OGV vào timeline. Ảnh và video MP4/MOV không cần FFmpeg.")
         }
         let task = Process()
         task.executableURL = URL(fileURLWithPath: executable)
-        task.arguments = ["-nostdin", "-v", "error"] + (still ? ["-loop", "1", "-framerate", "30"] : [])
-        task.arguments! += ["-i", source.path, "-map", "0:v:0"]
-        task.arguments! += still ? ["-t", "1", "-an"] : ["-map", "0:a:0?", "-c:a", "aac"]
-        task.arguments! += ["-vf", "scale=1920:1080:force_original_aspect_ratio=decrease:force_divisible_by=2,setsar=1",
-                            "-c:v", "libx264", "-preset", "fast", "-pix_fmt", "yuv420p", "-movflags", "+faststart", output.path]
+        task.arguments = ["-nostdin", "-v", "error", "-i", source.path, "-map", "0:v:0", "-map", "0:a:0?", "-c:a", "aac",
+                          "-vf", "scale=1920:1080:force_original_aspect_ratio=decrease:force_divisible_by=2,setsar=1",
+                          "-c:v", "libx264", "-preset", "fast", "-pix_fmt", "yuv420p", "-movflags", "+faststart", output.path]
         task.standardOutput = FileHandle.nullDevice
         task.standardError = FileHandle.nullDevice
         try task.run()
         task.waitUntilExit()
         guard task.terminationStatus == 0 else { throw error("FFmpeg không chuyển được tệp tư liệu sang MP4.") }
+    }
+
+    /// Fits a still image inside 1920×1080 (even sides, upscaling small images like the former FFmpeg path)
+    /// and writes a 1-second, 30 fps H.264 clip with AVFoundation, so archival photos import without FFmpeg.
+    static func stillClip(_ source: URL, to output: URL) throws {
+        let failure = error("Không chuẩn bị được clip từ ảnh tư liệu.")
+        guard let imageSource = CGImageSourceCreateWithURL(source as CFURL, nil),
+              let image = CGImageSourceCreateThumbnailAtIndex(imageSource, 0, [
+                  kCGImageSourceCreateThumbnailFromImageAlways: true,
+                  kCGImageSourceCreateThumbnailWithTransform: true,
+                  kCGImageSourceThumbnailMaxPixelSize: 4096
+              ] as CFDictionary), image.width > 0, image.height > 0 else {
+            throw error("Định dạng ảnh này không đọc được trên máy.")
+        }
+        let scale = min(1920 / Double(image.width), 1080 / Double(image.height))
+        let width = max(2, Int(Double(image.width) * scale) / 2 * 2)
+        let height = max(2, Int(Double(image.height) * scale) / 2 * 2)
+        try? FileManager.default.removeItem(at: output)
+        let writer = try AVAssetWriter(outputURL: output, fileType: .mp4)
+        writer.shouldOptimizeForNetworkUse = true
+        let input = AVAssetWriterInput(mediaType: .video, outputSettings: [
+            AVVideoCodecKey: AVVideoCodecType.h264, AVVideoWidthKey: width, AVVideoHeightKey: height
+        ])
+        input.expectsMediaDataInRealTime = false
+        let adaptor = AVAssetWriterInputPixelBufferAdaptor(assetWriterInput: input, sourcePixelBufferAttributes: [
+            kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_32BGRA,
+            kCVPixelBufferWidthKey as String: width, kCVPixelBufferHeightKey as String: height
+        ])
+        guard writer.canAdd(input) else { throw failure }
+        writer.add(input)
+        guard writer.startWriting() else { throw writer.error ?? failure }
+        writer.startSession(atSourceTime: .zero)
+        var buffer: CVPixelBuffer?
+        guard let pool = adaptor.pixelBufferPool,
+              CVPixelBufferPoolCreatePixelBuffer(nil, pool, &buffer) == kCVReturnSuccess, let frame = buffer else {
+            writer.cancelWriting()
+            throw failure
+        }
+        CVPixelBufferLockBaseAddress(frame, [])
+        let context = CGContext(data: CVPixelBufferGetBaseAddress(frame), width: width, height: height,
+                                bitsPerComponent: 8, bytesPerRow: CVPixelBufferGetBytesPerRow(frame),
+                                space: CGColorSpaceCreateDeviceRGB(),
+                                bitmapInfo: CGImageAlphaInfo.premultipliedFirst.rawValue | CGBitmapInfo.byteOrder32Little.rawValue)
+        context?.setFillColor(CGColor(gray: 0, alpha: 1))
+        context?.fill(CGRect(x: 0, y: 0, width: width, height: height))
+        context?.interpolationQuality = .high
+        context?.draw(image, in: CGRect(x: 0, y: 0, width: width, height: height))
+        CVPixelBufferUnlockBaseAddress(frame, [])
+        guard context != nil else {
+            writer.cancelWriting()
+            throw failure
+        }
+        for index in 0..<30 {
+            while !input.isReadyForMoreMediaData && writer.status == .writing { Thread.sleep(forTimeInterval: 0.005) }
+            guard writer.status == .writing,
+                  adaptor.append(frame, withPresentationTime: CMTime(value: CMTimeValue(index), timescale: 30)) else {
+                writer.cancelWriting()
+                throw writer.error ?? failure
+            }
+        }
+        input.markAsFinished()
+        writer.endSession(atSourceTime: CMTime(value: 30, timescale: 30))
+        let done = DispatchSemaphore(value: 0)
+        writer.finishWriting { done.signal() }
+        done.wait()
+        guard writer.status == .completed else { throw writer.error ?? failure }
     }
 }

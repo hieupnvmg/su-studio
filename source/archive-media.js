@@ -33,7 +33,7 @@ function archiveRequest(sid, kind, index, local = false) {
     render();
     send(local ? 'archiveImport' : item ? 'archiveDownload' : 'archiveSearch', {
         requestId, query, kind:item?.kind || kind, url:item?.url, projectId:p.id,
-        includeWeb:!item && archiveIncludeWeb, web:!!item?.web
+        includeWeb:!item && archiveIncludeWeb, web:!!item?.web, referer:item?.web ? item.source : undefined
     });
 }
 
@@ -113,7 +113,7 @@ function finishArchive(next) {
 
 function archiveView() {
     const p = project();
-    return `<div class="top"><div><button onclick="go('projects')">← Tất cả dự án</button><h1>Tư liệu thật</h1>
+    return `<div class="top"><div><button class="back" onclick="go('projects')">← Tất cả dự án</button><h1>Tư liệu thật</h1>
         <p class="hint">${esc(p.title)}</p></div></div>
         <div class="ai-layout">${workflowNavigation(p, 'archive')}<div>
         <section class="panel"><p>Tìm ảnh và phim từ kho tư liệu, báo chí, bảo tàng và đài truyền hình.</p>
@@ -121,7 +121,7 @@ function archiveView() {
         <p class="hint">Tìm web dùng tài khoản ChatGPT đã kết nối. Kết quả có tệp trực tiếp sẽ hiện nút Tải vào cảnh. Kiểm tra quyền sử dụng tại trang nguồn trước khi xuất bản.</p>
         <label><input type="checkbox" ${archiveCatalogOnly ? 'checked' : ''} onchange="archiveCatalogOnly=this.checked;render()"> Chỉ hiện mục có hồ sơ lưu trữ và niên đại</label>
         <p class="hint">Bộ lọc dùng hồ sơ của bộ sưu tập. Mở trang nguồn để đối chiếu nội dung với cảnh và xem điều kiện sử dụng.</p>
-        <p class="hint">Tư liệu đã tải xuất hiện trong danh sách nguồn hình của cảnh trên timeline. Ảnh được dựng thành đoạn giữ hình. Máy cần FFmpeg để chuẩn bị ảnh và video WebM.</p>
+        <p class="hint">Tư liệu đã tải xuất hiện trong danh sách nguồn hình của cảnh trên timeline. Ảnh được dựng thành đoạn giữ hình. Chỉ video WebM/OGV cần FFmpeg.</p>
         <div class="row"><button class="primary" onclick="finishArchive('tts')">Tiếp tục làm giọng đọc</button>
         <button onclick="finishArchive('production')">Mở timeline</button></div></section>
         ${p.scenes.length ? p.scenes.map((s, i) => archiveSceneView(p, s, i)).join('') : '<p class="note">Duyệt storyboard để có cảnh tìm tư liệu.</p>'}</div></div>`;
@@ -136,11 +136,12 @@ function archiveFileButton(item, assets, sid, index) {
     if (item.busy) return '<button disabled>Đang chuẩn bị…</button>';
     const direct = item.url && (item.web || item.license);
     if (direct || item.web) {
-        const button = direct ? `<button onclick="archiveRequest('${sid}',null,${index})">Tải vào cảnh</button>` : '';
+        const button = direct ? `<button class="primary" onclick="archiveRequest('${sid}',null,${index})">Tải vào cảnh</button>` : '';
         const importButton = item.web ? `<button onclick="archiveRequest('${sid}',null,${index},true)">Nhập tệp đã tải</button>` : '';
-        return button + importButton;
+        const missing = direct ? '' : '<span class="hint">Chưa xác định được tệp tải trực tiếp (trang xem, luồng phát hoặc nguồn chặn tải). Mở trang nguồn để tải thủ công.</span>';
+        return missing + button + importButton;
     }
-    return '';
+    return `<span class="hint">${item.url ? 'Chưa rõ giấy phép nên không tải tự động.' : 'Bộ sưu tập không cung cấp tệp mở (ví dụ hiện vật chưa thuộc phạm vi công cộng).'} Xem tại trang nguồn.</span>`;
 }
 
 function archiveSceneView(p, s, index) {
@@ -162,7 +163,7 @@ function archiveSceneView(p, s, index) {
         <div class="row"><button ${search?.busy || search?.webBusy ? 'disabled' : ''} onclick="archiveRequest('${s.id}','image')">Tìm ảnh</button>
         <button ${search?.busy || search?.webBusy ? 'disabled' : ''} onclick="archiveRequest('${s.id}','video')">Tìm video</button></div>
         ${search?.busy ? '<p role="status">Đang tìm trong các kho tư liệu…</p>' : ''}
-        ${search?.webBusy ? `<p role="status">Đang tìm thêm nguồn trên web… <button data-id="${esc(search.requestId)}" onclick="send('archiveWebCancel',{requestId:this.dataset.id})">Dừng tìm web</button></p>` : ''}
+        ${search?.webBusy ? `<p role="status">Đang tìm thêm nguồn trên web… <button class="danger" data-id="${esc(search.requestId)}" onclick="send('archiveWebCancel',{requestId:this.dataset.id})">Dừng tìm web</button></p>` : ''}
         ${search?.error ? `<p class="note">${esc(search.error)}</p>` : ''}
         ${search && !search.busy && !search.webBusy && !search.error && !search.items.length ? '<p class="hint">Chưa có kết quả. Thử tên khác của nhân vật, tên di tích hoặc địa danh gắn với sự kiện.</p>' : ''}
         ${(search?.warnings || []).map(warning => `<p class="hint">${esc(warning)}</p>`).join('')}
@@ -173,11 +174,11 @@ function archiveSceneView(p, s, index) {
             <span class="hint">${esc([item.provider, item.recordType, item.recordDate].filter(Boolean).join(" · "))}</span>
             ${item.note ? `<span class="hint">${esc(item.note)}</span>` : ''}
             <span class="hint">${esc(item.license || 'Xem giấy phép trên trang nguồn')} · ${esc(item.artist)}</span>
-            <div class="row"><button data-url="${esc(item.source)}" onclick="send('openLink',{url:this.dataset.url})">Trang nguồn ↗</button>
+            <div class="row"><button class="link" data-url="${esc(item.source)}" onclick="send('openLink',{url:this.dataset.url})">Trang nguồn ↗</button>
             ${archiveFileButton(item, assets, s.id, i)}</div>
             </div></article>`).join('')}</div>
         ${assets.map(a => `<div class="row"><b class="grow">${a.kind === 'image' ? 'Ảnh' : 'Video'} · ${esc(a.title)}</b>
-            <button data-url="${esc(a.source)}" onclick="send('openLink',{url:this.dataset.url})">Trang nguồn ↗</button>
+            <button class="link" data-url="${esc(a.source)}" onclick="send('openLink',{url:this.dataset.url})">Trang nguồn ↗</button>
             <button data-path="${esc(a.originalPath)}" onclick="send('openAsset',{path:this.dataset.path})">Xem tệp</button>
             <button onclick="insertArchive('${s.id}','${a.id}')">＋ Chèn vào timeline</button></div>`).join('')}
         </div></details>`;
