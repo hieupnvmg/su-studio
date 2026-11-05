@@ -58,4 +58,18 @@ invalid=entries;invalid[0]["path"]="/etc/passwd"
 do { _=try timeline.compose(invalid);fatalError("external path accepted") } catch {}
 invalid=entries;invalid[0]["trimEnd"]=99.0
 do { _=try timeline.compose(invalid);fatalError("invalid trim accepted") } catch {}
-print("Timeline export passed: MP4 1080p, 4 seconds, red/portrait-blue frames, narration, trim, retiming and invalid input guards")
+// One narration spread across two cover visuals in the same group.
+let redPath=folder.appendingPathComponent("red.mp4").path,bluePath=folder.appendingPathComponent("blue.mp4").path
+let grouped:[[String:Any]]=[["id":"lead","path":redPath,"duration":0.6,"audioPath":voice,"narrationGroup":"lead"],["id":"cover","path":bluePath,"duration":0.6,"narrationGroup":"lead"]]
+let (groupComposition,groupVideo,groupMix,groupDuration)=try timeline.compose(grouped)
+assert(abs(groupDuration-1.2)<0.05,"group keeps each visual's length");assert(groupMix.inputParameters.count==1)
+assert(groupVideo.isValid(for:groupComposition,timeRange:CMTimeRange(start:.zero,duration:groupComposition.duration),validationDelegate:nil))
+var ungrouped=grouped;ungrouped[0]["narrationGroup"]=nil;ungrouped[1]["narrationGroup"]=nil
+do { _=try timeline.compose(ungrouped);fatalError("ungrouped short clip accepted") } catch {}
+var tight=grouped;tight[0]["duration"]=0.5;tight[1]["duration"]=0.5
+let (tightComposition,tightVideo,_,tightDuration)=try timeline.compose(tight)
+assert(tightDuration>=AVURLAsset(url:URL(fileURLWithPath:voice)).duration.seconds-0.001,"last cover stretches to the end of the voice")
+assert(tightVideo.isValid(for:tightComposition,timeRange:CMTimeRange(start:.zero,duration:tightComposition.duration),validationDelegate:nil))
+var short=grouped;short[1]["duration"]=0.2
+do { _=try timeline.compose(short);fatalError("group shorter than voice accepted") } catch {}
+print("Timeline export passed: MP4 1080p, 4 seconds, red/portrait-blue frames, narration, trim, retiming, narration across cover visuals and invalid input guards")

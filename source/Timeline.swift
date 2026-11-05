@@ -137,7 +137,7 @@ final class StudioTimeline: NSObject, NSWindowDelegate {
                 let voice = try? asset(entry["audioPath"] as? String), video = try? asset(entry["path"] as? String)
                 let audioDuration = voice?.duration.seconds ?? 0, videoDuration = video?.duration.seconds ?? 0
                 let duration = audioDuration.isFinite && audioDuration>0 ? audioDuration : videoDuration
-                if duration.isFinite && duration>0 { values.append(["id":entry["id"] as? String ?? "","duration":duration,"videoDuration":videoDuration.isFinite ? videoDuration:0]) }
+                if duration.isFinite && duration>0 { values.append(["id":entry["id"] as? String ?? "","duration":duration,"videoDuration":videoDuration.isFinite ? videoDuration:0,"audioDuration":audioDuration.isFinite ? audioDuration:0]) }
             }
             onUpdate?(["status":"measured","values":values]);return
         }
@@ -181,8 +181,10 @@ final class StudioTimeline: NSObject, NSWindowDelegate {
     func compose(_ entries:[[String:Any]]) throws -> (AVMutableComposition,AVMutableVideoComposition,AVMutableAudioMix,Double) {
         let composition=AVMutableComposition(),video=AVMutableVideoComposition(),mix=AVMutableAudioMix()
         var instructions:[AVVideoCompositionInstructionProtocol]=[],audioParameters:[AVAudioMixInputParameters]=[]
-        var cursor=CMTime.zero
+        var cursor=CMTime.zero,voiceEnd=CMTime.zero
         func seconds(_ n:Double)->CMTime { CMTime(seconds:n,preferredTimescale:600) }
+        // A scene's narration may run across consecutive entries sharing a narrationGroup (cover visuals).
+        func sameGroup(_ i:Int,_ group:String?)->Bool { group != nil && i<entries.count && entries[i]["narrationGroup"] as? String == group }
         for (index,e) in entries.enumerated() {
             let source=try asset(e["path"] as? String)
             guard let src=source.tracks(withMediaType:.video).first,source.duration.seconds.isFinite else { throw issue("Clip \(index+1) không có video hợp lệ.") }
@@ -192,14 +194,20 @@ final class StudioTimeline: NSObject, NSWindowDelegate {
             // Container audio can end after the last video frame. Never stretch an empty video tail.
             let requested=CMTimeRange(start:seconds(start),duration:seconds(min(end,source.duration.seconds)-start))
             let range=CMTimeRangeGetIntersection(requested,otherRange:src.timeRange)
+            let group=e["narrationGroup"] as? String
+            var span=target,next=index+1
+            while sameGroup(next,group) { span+=(entries[next]["duration"] as? Double ?? 0);next+=1 }
             let voiceLength: Double
             if let path=e["audioPath"] as? String,!path.isEmpty {
                 voiceLength=try asset(path).duration.seconds
-                guard voiceLength.isFinite,voiceLength>0,voiceLength<=target+0.1 else { throw issue("Clip \(index+1) ngắn hơn lời kể. Bấm Căn theo giọng đọc hoặc tăng thời lượng timeline.") }
+                guard voiceLength.isFinite,voiceLength>0,voiceLength<=span+0.1 else { throw issue(next>index+1 ? "Các hình phủ của clip \(index+1) ngắn hơn lời kể. Bấm Căn theo giọng đọc hoặc tăng thời lượng các hình." : "Clip \(index+1) ngắn hơn lời kể. Bấm Căn theo giọng đọc hoặc tăng thời lượng timeline.") }
+                voiceEnd=CMTimeAdd(cursor,seconds(voiceLength))
             } else { voiceLength=0 }
             // Round UP to an output frame. Truncating the video time left the last
             // milliseconds of MP3 outside the instructions, invalidating the composition.
-            let slot=CMTime(value:Int64(ceil(max(target,voiceLength)*30)),timescale:30)
+            // Inside a narration group only the last entry stretches to cover what is left of the voice.
+            let remaining=max(0,CMTimeSubtract(voiceEnd,cursor).seconds)
+            let slot=CMTime(value:Int64(ceil((sameGroup(index+1,group) ? target : max(target,remaining))*30)),timescale:30)
             guard range.isValid,range.duration.seconds>0 else { throw issue("Đoạn cắt không còn khung hình video.") }
             guard let track=composition.addMutableTrack(withMediaType:.video,preferredTrackID:kCMPersistentTrackID_Invalid) else { throw issue("Không thêm được track video.") }
             try track.insertTimeRange(range,of:src,at:cursor);track.scaleTimeRange(CMTimeRange(start:cursor,duration:range.duration),toDuration:slot)
@@ -217,7 +225,7 @@ final class StudioTimeline: NSObject, NSWindowDelegate {
             if let path=e["audioPath"] as? String,!path.isEmpty {
                 let voice=try asset(path)
                 guard let sound=voice.tracks(withMediaType:.audio).first,voice.duration.seconds.isFinite,voice.duration.seconds>0 else { throw issue("Lời kể clip \(index+1) không đọc được.") }
-                guard voice.duration.seconds<=target+0.1 else { throw issue("Clip \(index+1) ngắn hơn lời kể. Bấm Căn theo giọng đọc hoặc tăng thời lượng timeline để giữ đủ lời.") }
+                guard voice.duration.seconds<=span+0.1 else { throw issue("Clip \(index+1) ngắn hơn lời kể. Bấm Căn theo giọng đọc hoặc tăng thời lượng timeline để giữ đủ lời.") }
                 if let audio=composition.addMutableTrack(withMediaType:.audio,preferredTrackID:kCMPersistentTrackID_Invalid) {
                     try audio.insertTimeRange(CMTimeRange(start:.zero,duration:voice.duration),of:sound,at:cursor)
                     let params=AVMutableAudioMixInputParameters(track:audio);params.setVolume(1,at:cursor);audioParameters.append(params)

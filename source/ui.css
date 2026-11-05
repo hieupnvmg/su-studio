@@ -39,3 +39,17 @@ button.flat:hover{background:#ebefe5;border-color:transparent;box-shadow:none}
 .row{flex-wrap:wrap}
 label:has(>input[type=checkbox]),label:has(>input[type=radio]){display:flex;align-items:center;gap:9px;cursor:pointer}
 label>input[type=checkbox],label>input[type=radio]{width:auto;margin:0;accent-color:var(--green)}
+/* Timeline insert points */
+.timeline-gap{width:28px;flex-shrink:0}
+.timeline-ruler>.timeline-gap,.timeline-audio>.timeline-gap{height:auto;padding:0;margin:0;border:0;background:none}
+.timeline-add{height:100px;min-height:0;padding:0;border:1px dashed #b7c4ae;border-radius:8px;background:transparent;color:#6c8160;font-size:18px;box-shadow:none;opacity:.6}
+.timeline-add:hover,.timeline-add.active{opacity:1;background:#e3ead9;border-color:var(--green);border-style:solid;color:var(--green);box-shadow:none}
+.timeline-insert{margin:-6px 0 18px;padding:16px 18px;border:1px solid #c9d6bf;border-radius:10px;background:#f7f9f2}
+.timeline-insert .row{margin-top:8px}
+.timeline-library{display:grid;gap:6px;margin-top:10px;max-height:240px;overflow:auto}
+.timeline-library button{justify-content:flex-start;text-align:left}
+/* Narration groups: one scene's voice across several visuals */
+.timeline-clip.timeline-cover{border-left:3px solid #6f9363}
+.timeline-audio>.timeline-narration-span{background:linear-gradient(90deg,#c6dccb,#d7e7da);border-left:3px solid var(--green);font-weight:600}
+.timeline-group-note{display:flex;flex-wrap:wrap;align-items:center;gap:10px;margin:12px 0 4px;padding:10px 12px;border-radius:8px;background:#e9f0e3;font-size:12px;color:#355241}
+.timeline-cover-choice{margin:12px 0 2px;font-size:13px}

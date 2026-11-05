@@ -72,3 +72,12 @@ TẢI TƯ LIỆU THẬT
 
 LÀM SONG SONG GIỌNG ĐỌC VÀ HÌNH ẢNH
 Sau khi duyệt storyboard, Giọng đọc, Chốt tạo hình và Ảnh tham chiếu mở cùng lúc: có thể tạo/duyệt ảnh trong khi audio còn đang làm. Ảnh tham chiếu vẫn cần tạo hình đã chốt; Video & xuất cần ảnh đã duyệt. Tư liệu thật là bước tuỳ chọn, không còn được gợi ý là bước tiếp theo. Danh sách bước ghi rõ bước nào "Làm song song được" hoặc "Chờ bước trước".
+
+SỬA CẢNH SAU KHI ĐÃ DUYỆT
+Sửa ghi chú, tên chương hoặc thời gian không làm mất trạng thái duyệt. Sửa lời đọc chỉ cần tạo lại và duyệt lại giọng đọc của cảnh đó; sửa prompt ảnh chỉ cần duyệt lại ảnh và clip; sửa prompt video chỉ cần duyệt lại clip. App báo ngay phần nào cần duyệt lại. Xoá trống lời đọc, prompt ảnh hoặc thời gian thì cảnh cần duyệt lại storyboard.
+
+CHÈN VIDEO, ẢNH VÀO TIMELINE
+Trong Video & xuất, giữa các đoạn timeline (và ở đầu, cuối) có ô ＋. Bấm ＋ để chèn đúng vị trí đó: Chọn video từ máy (chọn được nhiều MP4/MOV/M4V một lần), Chọn ảnh từ máy (mỗi ảnh thành đoạn giữ hình 5 giây, không cần FFmpeg), hoặc dùng tư liệu/video đã có trong dự án. Tệp được chép vào dự án và chèn theo thứ tự đã chọn; tệp không đọc được sẽ được báo tên và bỏ qua. Nút "Chèn video, ảnh sau đoạn đang chọn" mở cùng bảng chọn. "Căn theo giọng đọc" giữ nguyên thời lượng của đoạn ảnh không có lời kể.
+
+MỘT CẢNH DÙNG NHIỀU HÌNH
+Khi lời kể dài hơn clip, thay vì kéo chậm clip, thêm hình phủ: bấm ＋ ngay sau một cảnh (hoặc nút "＋ Thêm hình cho lời kể cảnh này" khi chọn cảnh), giữ ô "Dùng chung lời kể của Cảnh N" và chọn video, ảnh hoặc tư liệu. Lời kể chạy liền qua cả nhóm; thời lượng nhóm được chia đều cho các hình và vẫn sửa được từng hình. "Căn theo giọng đọc" chia lại theo độ dài lời kể. Dời cảnh sẽ dời cả nhóm; hình phủ bị kéo ra khỏi nhóm hoặc mất cảnh gốc sẽ tự tách thành đoạn không lời kể. Xem thử một hình trong nhóm sẽ phát cả nhóm cùng lời kể.

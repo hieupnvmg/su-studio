@@ -270,11 +270,43 @@ final class Studio: NSObject, NSApplicationDelegate, WKScriptMessageHandler, WKU
             }
         case "timeline": timeline.command(body)
         case "timelineImport":
-            let panel = NSOpenPanel(); panel.allowsMultipleSelection=false;panel.allowedFileTypes=["mp4","mov","m4v"]
-            guard panel.runModal() == .OK,let file=panel.url else { return }
-            let source=AVURLAsset(url:file)
-            guard !source.tracks(withMediaType:.video).isEmpty,source.duration.seconds.isFinite,source.duration.seconds>0 else { reply(["error":"File không có video đọc được."]);return }
-            do { let folder=root.appendingPathComponent("assets",isDirectory:true);try FileManager.default.createDirectory(at:folder,withIntermediateDirectories:true);let dest=folder.appendingPathComponent(UUID().uuidString+"-"+file.lastPathComponent);try FileManager.default.copyItem(at:file,to:dest);reply(["projectId":body["projectId"] as? String ?? "","path":dest.path,"name":file.lastPathComponent,"duration":source.duration.seconds],"nativeTimelineImported") } catch { reply(["error":"Không nhập được video vào dự án."]) }
+            // Pick one or more videos (or images, turned into still clips) and insert them at `insertAt` in order.
+            let projectID = body["projectId"] as? String ?? ""
+            let insertAt = (body["insertAt"] as? NSNumber)?.intValue
+            let still = body["kind"] as? String == "image"
+            let coverOf = body["coverOf"] as? String ?? ""
+            let panel = NSOpenPanel()
+            panel.allowsMultipleSelection = true
+            panel.message = still ? "Chọn một hoặc nhiều ảnh để chèn vào timeline" : "Chọn một hoặc nhiều video để chèn vào timeline"
+            panel.allowedContentTypes = still ? [.image] : ["mp4", "mov", "m4v"].compactMap { UTType(filenameExtension: $0) }
+            guard panel.runModal() == .OK, !panel.urls.isEmpty else { return }
+            let files = panel.urls, assetsRoot = root
+            Task.detached { [weak self] in
+                var imported: [[String: Any]] = [], errors: [String] = []
+                for file in files {
+                    do {
+                        if still {
+                            let clip = try ArchiveMedia.importFile(file, kind: "image", root: assetsRoot)
+                            imported.append(["kind": "image", "name": file.lastPathComponent, "path": clip["path"] ?? "",
+                                             "originalPath": clip["originalPath"] ?? "", "duration": clip["duration"] ?? 1])
+                            continue
+                        }
+                        let source = AVURLAsset(url: file)
+                        guard !source.tracks(withMediaType: .video).isEmpty, source.duration.seconds.isFinite, source.duration.seconds > 0 else {
+                            errors.append(file.lastPathComponent); continue
+                        }
+                        let folder = assetsRoot.appendingPathComponent("assets", isDirectory: true)
+                        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+                        let dest = folder.appendingPathComponent(UUID().uuidString + "-" + file.lastPathComponent)
+                        try FileManager.default.copyItem(at: file, to: dest)
+                        imported.append(["name": file.lastPathComponent, "path": dest.path, "duration": source.duration.seconds])
+                    } catch { errors.append(file.lastPathComponent) }
+                }
+                var result: [String: Any] = ["projectId": projectID, "files": imported, "errors": errors]
+                if let insertAt { result["insertAt"] = insertAt }
+                if !coverOf.isEmpty { result["coverOf"] = coverOf }
+                await MainActor.run { [weak self, result] in self?.reply(result, "nativeTimelineImported") }
+            }
         case "plenxVideo":
             credentials.read("plenx") { [weak self] result in
                 guard let self=self else { return }
