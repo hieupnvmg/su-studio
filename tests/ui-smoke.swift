@@ -167,7 +167,7 @@ const dialogSaved=JSON.parse(JSON.stringify(dialogProject));if(dialogSaved.dialo
 """)
 c.evaluateScript("""
 const promptScene={id:'prompt-scene',chapter:'Test',voice:'Lời',image:'Image',video:'Old video prompt',approvals:{script:true,audio:true,image:true,video:true},assets:{image:[{id:'reference',path:'/image.png',selected:true}],audio:[{id:'voice',path:'/voice.mp3',selected:true}],video:[{id:'clip',path:'/old.mp4',selected:true,prompt:'Old video prompt'}]}};
-const promptProject={id:'prompt-project',scenes:[promptScene],videoSettings:{model:'test-i2v',duration:5,quality:'1080p'},guide:{brief:{},steps:{storyboard:{approved:true,draft:{scenes:[{chapter:'Test',voice:'Lời',image:'Image',video:'Old video prompt'}]},approvedResult:{scenes:[{chapter:'Test',voice:'Lời',image:'Image',video:'Old video prompt'}]}}}}};
+const promptProject={id:'prompt-project',title:'CEO NVIDIA',scenes:[promptScene],videoSettings:{model:'test-i2v',duration:5,quality:'1080p'},guide:{brief:{},steps:{storyboard:{approved:true,draft:{scenes:[{chapter:'Test',voice:'Lời',image:'Image',video:'Old video prompt'}]},approvedResult:{scenes:[{chapter:'Test',voice:'Lời',image:'Image',video:'Old video prompt'}]}}}}};
 state.projects=[promptProject];selected=promptProject.id;plenxImagePending=null;
 setSceneVideoPrompt(promptScene.id,'New <camera> motion');
 if(promptScene.video!=='New <camera> motion'||promptScene.approvals.video||!promptScene.approvals.audio||!promptScene.approvals.image||!promptScene.approvals.script)throw Error('video prompt only invalidates video approval');
@@ -176,7 +176,12 @@ if(promptProject.guide.steps.storyboard.draft.scenes[0].video!==promptScene.vide
 if(!videoPromptView(promptScene).includes('New &lt;camera&gt; motion')||!videoPromptView(promptScene).includes('Tạo clip mới'))throw Error('prompt editor escaping and old clip notice');
 plenxVideoModels=[{id:'test-i2v',name:'Test',modes:['i2v'],aspect_ratios:['16:9'],endpoints:['/developer/generate/video']}];sent=[];
 generateSceneVideo(promptScene.id);
-if(sent[0]?.body.prompt!==promptScene.video)throw Error('new prompt sent to generation');
+const outboundVideoPrompt=sent[0]?.body.prompt;
+if(!outboundVideoPrompt?.endsWith(promptScene.video)||!outboundVideoPrompt.includes('CEO NVIDIA')||!outboundVideoPrompt.includes('phim tài liệu hiện đại'))throw Error('video payload keeps edited prompt and adds era context');
+if(sent[0].body.sourcePrompt!==promptScene.video)throw Error('persisted source stays editable');
+if(visualPromptBrief({visualPromptBrief:legacyVisualPromptBrief}).includes('hoặc yếu tố hiện đại')||visualPromptBrief({visualPromptBrief:'Cổ trang theo yêu cầu'})!=='Cổ trang theo yêu cầu')throw Error('replace legacy brief and preserve custom briefs');
+const oldStyle={style:legacyVisualStyle,characters:[]};
+if(sceneDesignPrompt({...promptProject,visualBible:oldStyle},promptScene).includes(legacyVisualStyle)||oldStyle.style!==legacyVisualStyle)throw Error('legacy style is replaced at generation without modifying stored project');
 const sentPrompt=promptScene.video;setSceneVideoPrompt(promptScene.id,'blocked');if(promptScene.video!==sentPrompt)throw Error('editing blocked during active request');
 plenxImagePending=null;promptScene.videoJob.status='failed';
 setAIStoryPrompt(0,'video','Draft only');if(promptScene.video!==sentPrompt||promptProject.guide.steps.storyboard.draft.scenes[0].video!=='Draft only')throw Error('storyboard edits stay draft until approval');
@@ -188,7 +193,7 @@ const multiProject={id:'multi-project',scenes:[multiScene],videoSettings:{model:
 plenxVideoModels=[{id:'grok-video',name:'Grok',modes:['i2v','r2v'],aspect_ratios:['16:9'],endpoints:['/developer/generate/video','/developer/generate/video-omni']}];const refModel=plenxVideoModels[0];
 if(videoReferenceIssue(multiScene,refModel,videoSettings(multiProject)))throw Error('valid multi refs');
 if(!videoReferenceIssue(multiScene,{...refModel,modes:['i2v']},videoSettings(multiProject)))throw Error('unsupported model blocked');
-sent=[];generateSceneVideo(multiScene.id);if(sent[0]?.body.referencePaths.join(',')!=='/face.png,/wide.png'||sent[0]?.body.endpoint!=='/developer/generate/video-omni'||sent[0]?.body.prompt!=='SHOT 1 <IMAGE_2>; SHOT 2 <IMAGE_1>')throw Error('ordered references and model syntax sent');
+sent=[];generateSceneVideo(multiScene.id);if(sent[0]?.body.referencePaths.join(',')!=='/face.png,/wide.png'||sent[0]?.body.endpoint!=='/developer/generate/video-omni'||sent[0]?.body.prompt?.endsWith('SHOT 1 <IMAGE_2>; SHOT 2 <IMAGE_1>')!==true)throw Error('ordered references and model syntax sent');
 const snapshot=plenxImagePending;plenxImagePending=null;moveVideoReference(multiScene.id,'wide',-1);if(multiScene.videoReferences[0].path!=='/wide.png'||multiScene.approvals.video||!multiScene.approvals.image||!multiScene.approvals.audio)throw Error('reorder preserves other approvals');
 nativeVideoResult({status:'completed',path:'/late.mp4',name:'Late',duration:6},snapshot);if(multiScene.assets.video[0].selected)throw Error('late result with old references not selected');
 window.nativeAsset({request:{project:multiProject.id,scene:multiScene.id,kind:'image',videoReference:true},path:'/imported.png',name:'Imported'});if(multiScene.videoReferences.length!==3||multiScene.assets.image[0].path!=='/main.png'||!multiScene.approvals.image)throw Error('reference import preserves primary image');
