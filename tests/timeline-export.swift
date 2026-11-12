@@ -115,4 +115,12 @@ let cropAsset=try exportShort([entries[0]],["format":"short","fill":"crop","capt
 let corner=try pixel(cropAsset,0.5,40,60);assert(corner.redComponent>0.7 && corner.blueComponent<0.3,"crop fills the whole frame")
 // Plain 16:9 stays on the built-in layer path.
 let (_,plainVideo,_,_)=try timeline.compose(entries);assert(plainVideo.customVideoCompositorClass == nil)
-print("Timeline export passed: MP4 1080p, Short 1080x1920 with blurred fill, crop and burned-in captions, 4 seconds, red/portrait-blue frames, narration, trim, retiming, narration across cover visuals and invalid input guards")
+// The assets folder may not exist yet when the app starts; it is created by the first import or render.
+let lateRoot=testRoot.appendingPathComponent("late-\(UUID().uuidString)")
+try FileManager.default.createDirectory(at:lateRoot,withIntermediateDirectories:true)
+let lateTimeline=StudioTimeline(root:lateRoot)
+let lateAssets=lateRoot.appendingPathComponent("assets");try FileManager.default.createDirectory(at:lateAssets,withIntermediateDirectories:true)
+try FileManager.default.copyItem(at:folder.appendingPathComponent("red.mp4"),to:lateAssets.appendingPathComponent("late.mp4"))
+let (_,_,_,lateDuration)=try lateTimeline.compose([["id":"late","path":lateAssets.appendingPathComponent("late.mp4").path,"duration":1.0]])
+precondition(abs(lateDuration-1)<0.05,"files in an assets folder created after start are found")
+print("Timeline export passed: assets folder created after start, MP4 1080p, Short 1080x1920 with blurred fill, crop and burned-in captions, 4 seconds, red/portrait-blue frames, narration, trim, retiming, narration across cover visuals and invalid input guards")

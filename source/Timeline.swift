@@ -30,12 +30,14 @@ final class PlenXVideo: NSObject, URLSessionTaskDelegate {
         if kind == "status" {
             guard let task = body["taskId"] as? String, task.range(of:"^[A-Za-z0-9_-]+$",options:.regularExpression) != nil else { reply(["status":"error","message":"Mã tác vụ không hợp lệ."]); return }
             api("/status/"+task,key:key) { json,code in
-                guard let json = json else { reply(["status":"error","taskId":task,"message":"Chưa đọc được tác vụ (HTTP \(code)). Kiểm tra lại, không tạo lại tự động."]); return }
+                // No HTTP response at all: the Mac was asleep or the network is not back yet. The task is still on PlenX; keep checking.
+                guard let json = json else { reply(code == 0 ? ["status":"queued","taskId":task,"transient":true,"message":"Mất kết nối mạng (máy vừa ngủ?). Sẽ tự kiểm tra lại tác vụ, không tạo lượt mới."] : ["status":"error","taskId":task,"message":"Chưa đọc được tác vụ (HTTP \(code)). Kiểm tra lại, không tạo lại tự động."]); return }
                 let state = json["status"] as? String ?? "queued"
                 if ["error","failed"].contains(state) { reply(["status":"failed","taskId":task,"message":"PlenX báo tạo video thất bại. Kiểm tra lịch sử trước khi tạo lại."]); return }
                 guard ["completed","succeeded"].contains(state) else { reply(["status":"queued","taskId":task,"message":"PlenX đang tạo video…"]); return }
                 guard let raw = json["result_url"] as? String,let url = URL(string:raw),url.scheme == "https",url.user == nil,url.password == nil else { reply(["status":"error","taskId":task,"message":"Chưa có URL video hợp lệ."]); return }
                 self.session.downloadTask(with:url) { file,response,error in
+                    if error != nil || response == nil { reply(["status":"queued","taskId":task,"transient":true,"message":"Video đã tạo xong, đang chờ mạng để tải về…"]); return }
                     guard error == nil,let file = file,let http = response as? HTTPURLResponse,(200..<300).contains(http.statusCode),let size = try? file.resourceValues(forKeys:[.fileSizeKey]).fileSize,size <= 1_000_000_000 else { reply(["status":"error","taskId":task,"message":"Video đã tạo nhưng tải chưa thành công. Kiểm tra lại tác vụ để tải, không cần tạo mới."]); return }
                     do {
                         let saved = try Self.storeDownloadedVideo(file, in:self.root)
@@ -58,7 +60,7 @@ final class PlenXVideo: NSObject, URLSessionTaskDelegate {
         var images:[Data]=[]
         for raw in paths {
             let file = URL(fileURLWithPath:raw).standardizedFileURL.resolvingSymlinksInPath()
-            guard file.deletingLastPathComponent()==root, let source = CGImageSourceCreateWithURL(file as CFURL,nil),
+            guard file.deletingLastPathComponent().standardizedFileURL.resolvingSymlinksInPath().path == root.standardizedFileURL.resolvingSymlinksInPath().path, let source = CGImageSourceCreateWithURL(file as CFURL,nil),
                   let image = CGImageSourceCreateThumbnailAtIndex(source,0,[kCGImageSourceCreateThumbnailFromImageAlways:true,kCGImageSourceThumbnailMaxPixelSize:2048,kCGImageSourceCreateThumbnailWithTransform:true] as CFDictionary) else { reply(["status":"error","message":"Không đọc được một ảnh tham chiếu trong dự án. Chưa gửi tạo video."]);return }
             let png = NSMutableData();guard let out = CGImageDestinationCreateWithData(png,"public.png" as CFString,1,nil) else { reply(["status":"error","message":"Chưa chuẩn bị được ảnh."]);return };CGImageDestinationAddImage(out,image,nil);guard CGImageDestinationFinalize(out) else { reply(["status":"error","message":"Không chuyển được ảnh."]);return };images.append(png as Data)
         }
@@ -110,7 +112,7 @@ final class StudioTimeline: NSObject, NSWindowDelegate {
     private func asset(_ path:String?) throws -> AVURLAsset {
         guard let path = path else { throw issue("Thiếu file video hoặc giọng đọc.") }
         let url = URL(fileURLWithPath:path).standardizedFileURL.resolvingSymlinksInPath()
-        guard url.deletingLastPathComponent()==root,FileManager.default.fileExists(atPath:url.path) else { throw issue("Không tìm thấy file trong tài nguyên dự án. Nhập lại file bị thiếu.") }
+        guard url.deletingLastPathComponent().standardizedFileURL.resolvingSymlinksInPath().path == root.standardizedFileURL.resolvingSymlinksInPath().path,FileManager.default.fileExists(atPath:url.path) else { throw issue("Không tìm thấy file trong tài nguyên dự án. Nhập lại file bị thiếu.") }
         return AVURLAsset(url:url)
     }
     private func issue(_ message:String)->NSError { NSError(domain:"StudioTimeline",code:1,userInfo:[NSLocalizedDescriptionKey:message]) }

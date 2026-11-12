@@ -99,3 +99,57 @@ label>input[type=checkbox],label>input[type=radio]{width:auto;margin:0;accent-co
 .restore-mode { border: 1px solid var(--line); border-radius: 12px; padding: 10px 14px; display: grid; gap: 6px; margin: 0 0 10px; }
 .restore-mode legend { font-weight: 600; font-size: 14px; padding: 0 6px; }
 .restore-mode label { display: flex; gap: 8px; align-items: center; font-size: 14px; }
+
+/* Blender stage */
+.blender-source { gap: 18px; margin: 12px 0; }
+.blender-source label, .blender-clip-card .row > label { display: inline-flex; align-items: center; gap: 8px; font-size: 14px; }
+.blender-script summary { cursor: pointer; font-weight: 600; margin: 10px 0 6px; }
+.blender-script textarea { min-height: 260px; font: 12.5px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace; white-space: pre; tab-size: 4; }
+.blender-options { margin-top: 10px; }
+.blender-bar { height: 6px; border-radius: 999px; background: var(--line); overflow: hidden; margin-top: 8px; }
+.blender-bar span { display: block; height: 100%; background: var(--green); transition: width .3s ease; }
+.blender-clips { display: grid; gap: 8px; margin-top: 12px; }
+.blender-clip { padding: 10px 12px; border: 1px solid var(--line); border-radius: 12px; align-items: center; }
+.blender-clip.active { border-color: var(--green); }
+.blender-clip-card summary { display: flex; align-items: center; gap: 12px; cursor: pointer; }
+.blender-clip-card summary b { display: block; font-size: 16px; }
+.blender-clip-card summary small { display: block; color: var(--muted); font-size: 13px; }
+.blender-from-scene, .blender-attach { width: auto; max-width: 320px; }
+.blender-check { margin-top: 8px; }
+.blender-check.ok { color: var(--green); }
+.blender-effects { gap: 14px; align-items: center; margin-top: 8px; }
+.blender-effects label { display: inline-flex; align-items: center; gap: 6px; font-size: 14px; }
+.blender-effects select { width: auto; }
+.blender-preview { margin-top: 12px; }
+.blender-preview-strip { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 8px; }
+.blender-preview-strip img { width: 100%; border-radius: 8px; display: block; background: #111; }
+.blender-packs { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 10px; }
+.blender-pack { border: 1px solid var(--line); border-radius: 12px; padding: 12px 14px; display: grid; gap: 6px; align-content: start; }
+.blender-pack small { color: var(--muted); }
+.model-list { display: grid; gap: 10px; margin-top: 12px; }
+.model-item { border: 1px solid var(--line); border-radius: 12px; padding: 12px 14px; }
+.blender-add-shot { gap: 10px; flex-wrap: wrap; }
+.blender-add-shot select { width: auto; max-width: 280px; }
+.blender-shots { display: grid; gap: 10px; margin-top: 10px; }
+.blender-shot { display: flex; gap: 12px; align-items: center; border: 1px solid var(--line); border-radius: 12px; padding: 10px; }
+.blender-shot img { width: 120px; height: 68px; object-fit: cover; border-radius: 8px; background: #111; }
+.blender-shot .row { gap: 10px; flex-wrap: wrap; margin-top: 6px; align-items: center; }
+.blender-shot label { display: inline-flex; gap: 6px; align-items: center; font-size: 13px; }
+.blender-shot select { width: auto; }
+.blender-shot-actions { display: flex; flex-direction: column; gap: 4px; }
+.model-finder .row input { flex: 1; }
+.model-packs { gap: 8px; flex-wrap: wrap; margin-top: 8px; }
+.model-list-group { margin-top: 12px; border-top: 1px solid var(--line); padding-top: 10px; }
+.model-list-group summary { cursor: pointer; }
+.model-item-row { margin-top: 10px; }
+.model-item-row .row { gap: 10px; align-items: center; }
+.model-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 10px; margin-top: 8px; }
+.model-card { border: 1px solid var(--line); border-radius: 12px; padding: 8px; display: grid; gap: 4px; align-content: start; font-size: 13px; }
+.model-card img, .model-thumb { width: 100%; aspect-ratio: 16/10; object-fit: cover; border-radius: 8px; background: #1a1a1a; }
+.model-card b { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.model-card small { color: var(--muted); }
+.model-card .row { gap: 6px; }
+.blender-context { border: 1px solid var(--line); border-radius: 12px; padding: 10px 14px; margin: 10px 0; }
+.blender-context summary { cursor: pointer; }
+.blender-context-text { min-height: 200px; margin-top: 8px; }
+.blender-context .row label { display: inline-flex; gap: 6px; align-items: center; font-size: 14px; }

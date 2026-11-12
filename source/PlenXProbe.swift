@@ -86,7 +86,7 @@ final class PlenXImages: NSObject, URLSessionTaskDelegate {
         var images:[Data]=[]
         for path in paths {
             let file=URL(fileURLWithPath:path).standardizedFileURL.resolvingSymlinksInPath()
-            guard file.deletingLastPathComponent()==folder,let source=CGImageSourceCreateWithURL(file as CFURL,nil),
+            guard file.deletingLastPathComponent().standardizedFileURL.resolvingSymlinksInPath().path == folder.standardizedFileURL.resolvingSymlinksInPath().path,let source=CGImageSourceCreateWithURL(file as CFURL,nil),
                   let image=CGImageSourceCreateThumbnailAtIndex(source,0,[kCGImageSourceCreateThumbnailFromImageAlways:true,kCGImageSourceThumbnailMaxPixelSize:2048,kCGImageSourceCreateThumbnailWithTransform:true] as CFDictionary) else { fail("Không đọc được ảnh nhân vật chuẩn trong dự án. Chọn lại ảnh trước khi tạo cảnh.");return }
             let data=NSMutableData()
             guard let destination=CGImageDestinationCreateWithData(data,"public.png" as CFString,1,nil) else { fail("Không chuẩn bị được ảnh nhân vật.");return }
@@ -134,6 +134,10 @@ final class PlenXImages: NSObject, URLSessionTaskDelegate {
         active = true
         session.dataTask(with:request) { data,response,error in
             let status = (response as? HTTPURLResponse)?.statusCode ?? 0
+            if kind == "status", status == 0, let task = body["taskId"] as? String {
+                // Asleep or offline while checking: the task is still on PlenX, so keep it alive and check again.
+                reply(["status":"queued","taskId":task,"transient":true,"message":"Mất kết nối mạng (máy vừa ngủ?). Sẽ tự kiểm tra lại, không tạo lượt mới."]); return
+            }
             guard error == nil, (200..<300).contains(status), let data = data,
                   let json = (try? JSONSerialization.jsonObject(with:data)) as? [String:Any], json["success"] as? Bool != false else {
                 reply(["status":"error","message":kind == "generate" ? "Chưa xác nhận được tác vụ PlenX (HTTP \(status)). Không tự gửi lại. Kiểm tra lịch sử PlenX trước khi tạo mới vì có thể đã dùng credit." : "Không đọc được PlenX (HTTP \(status)). Kiểm tra key, quyền API, credit hoặc thử kiểm tra lại tác vụ."]); return
@@ -149,6 +153,7 @@ final class PlenXImages: NSObject, URLSessionTaskDelegate {
             guard let raw = json["result_url"] as? String, let url = URL(string:raw), url.scheme == "https", url.user == nil, url.password == nil else { reply(["status":"error","taskId":task,"message":"Chưa có URL ảnh HTTPS hợp lệ. Hãy kiểm tra lại tác vụ."]); return }
             // Media download has no API key; redirects are blocked as for API requests.
             self.session.downloadTask(with:url) { file,response,error in
+                if error != nil || response == nil { reply(["status":"queued","taskId":task,"transient":true,"message":"Ảnh đã tạo xong, đang chờ mạng để tải về…"]); return }
                 guard error == nil, let file = file, let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode),
                       (http.expectedContentLength < 50_000_000), let data = try? Data(contentsOf:file), data.count <= 50_000_000,
                       let image = NSImage(data:data), let tiff = image.tiffRepresentation, let bitmap = NSBitmapImageRep(data:tiff), let png = bitmap.representation(using:.png,properties:[:]) else {

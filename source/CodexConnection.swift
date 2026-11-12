@@ -309,8 +309,8 @@ final class CodexConnection {
         try? FileManager.default.createDirectory(at: workspace, withIntermediateDirectories: true)
         emitAssistant("running", stage == "research" ? "AI đang đối chiếu tư liệu và chuẩn bị bản nghiên cứu…" : "AI đang chuẩn bị gợi ý cho bước này…")
         let archiveSearch = stage == "archive_web"
-        let config: [String: Any] = ["web_search": (archiveSearch || stage == "research") ? "live" : "disabled", "features.shell_tool": false, "features.multi_agent": false]
-        var threadParams: [String: Any] = ["cwd": workspace.path, "sandbox": "read-only", "approvalPolicy": "never", "ephemeral": true, "config": config, "baseInstructions": archiveSearch ? AssistantPlan.archiveInstructions : AssistantPlan.instructions]
+        let config: [String: Any] = ["web_search": (archiveSearch || stage == "research" || stage == "blender_context") ? "live" : "disabled", "features.shell_tool": false, "features.multi_agent": false]
+        var threadParams: [String: Any] = ["cwd": workspace.path, "sandbox": "read-only", "approvalPolicy": "never", "ephemeral": true, "config": config, "baseInstructions": AssistantPlan.baseInstructions(stage: stage)]
         if let model = assistantJob?.model, !model.isEmpty { threadParams["model"] = model }
         request("thread/start", threadParams) { [weak self] response in
             guard let self = self else { return }
@@ -365,7 +365,7 @@ final class CodexConnection {
             assistantProgress?.phase = "validating"
             if let data = assistantJob?.finalText.data(using: .utf8), let result = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any], (job.stage == "archive_web" ? result["items"] is [[String: String]] : AssistantPlan.isValid(result, stage: job.stage)) {
                 finishAssistant(status: "completed", message: "Bản nháp đã sẵn sàng để bạn xem và duyệt.", result: result)
-            } else { finishAssistant(status: "error", message: "AI trả về nội dung chưa đúng cấu trúc. Bản đã duyệt vẫn được giữ; hãy thử tạo lại.") }
+            } else { finishAssistant(status: "error", message: job.stage == "blender_script" ? "AI chưa trả về script Python dùng được (có thể chỉ trả lời bằng lời). Script cũ vẫn được giữ; bấm viết lại." : job.stage == "blender_assets" ? "AI chưa trả về danh sách model đọc được. Bấm đề xuất lại." : "AI trả về nội dung chưa đúng cấu trúc. Bản đã duyệt vẫn được giữ; hãy thử tạo lại.") }
         } else { finishAssistant(status: "error", message: turn["status"] as? String == "interrupted" ? "Đã dừng yêu cầu AI. Bạn có thể tạo lại khi sẵn sàng." : "AI chưa hoàn tất. Có thể kết nối hoặc hạn mức đang bị giới hạn; hãy thử lại.") }
     }
     private func emitAssistant(_ status: String, _ message: String, result: [String: Any]? = nil, force: Bool = false) {

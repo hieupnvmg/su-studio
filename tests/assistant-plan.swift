@@ -9,4 +9,22 @@ precondition(cut.contains("mode = \"series\"") && AssistantPlan.stages.contains(
 let ok:[String:Any] = ["title":"t","message":"m","document":"d","sources":[],"options":[["id":"a","title":"b","description":"c"]],"scenes":[["time":"","chapter":"x|y","voice":"hook","image":"","video":"","notes":""]]]
 precondition(AssistantPlan.isValid(ok,stage:"short_cut"))
 var bad = ok; bad["options"] = [] as [[String:Any]]; precondition(!AssistantPlan.isValid(bad,stage:"short_cut"))
-print("Assistant plan passed: Short storyboard profile, 9:16 prompts, script mode, short_cut stage and validation")
+let blender = AssistantPlan.prompt(stage:"blender_script",context:["duration":6,"aspectRatio":"9:16","camera":"dolly","scene":["voice":"x"]])
+precondition(blender.contains("Blender 4.x/5.x") && blender.contains("dọc 9:16") && blender.contains("dolly") && blender.contains("không đọc/ghi file") && AssistantPlan.stages.contains("blender_script"))
+var bscript = ok; bscript["document"] = "box()"; precondition(AssistantPlan.isValid(bscript,stage:"blender_script")); bscript["document"] = "  "; precondition(!AssistantPlan.isValid(bscript,stage:"blender_script"))
+precondition(AssistantPlan.baseInstructions(stage:"blender_script").contains("VIẾT CODE") && AssistantPlan.baseInstructions(stage:"storyboard") == AssistantPlan.instructions && AssistantPlan.baseInstructions(stage:"archive_web") == AssistantPlan.archiveInstructions)
+let refusal = "Chưa tạo script Python: phiên này được giới hạn ở vai trò biên tập và hướng dẫn sản xuất.\n\nĐề xuất cảnh để duyệt: một đại lộ tương lai đổ nát lúc hoàng hôn, dựng low-poly; box(...) cho toà nhà.\n\nƯu tiên yêu cầu đầu bài: clip 10 giây, khung dọc 9:16."
+precondition(!AssistantPlan.looksLikeScript(refusal), "prose refusal is not a script")
+precondition(AssistantPlan.looksLikeScript("import random\n# Dựng bãi cọc\nground(80, \"#5f6b45\")\nfor i in range(10):\n    cylinder(\"Cọc %d\" % i, 0.15, 3, (i, 8, 1))\nsun(2.5, 15, 250)"), "script with Vietnamese names in strings and comments")
+precondition(!AssistantPlan.looksLikeScript("x = 1\ny = 2"), "no helper call")
+let assets = AssistantPlan.prompt(stage:"blender_assets",context:["prompt":"trực thăng bay qua rừng"])
+precondition(assets.contains("TIẾNG ANH") && AssistantPlan.baseInstructions(stage:"blender_assets").contains("model 3D cần tải"))
+var assetResult = ok; assetResult["scenes"] = [["time":"1","chapter":"huey","voice":"UH-1 Huey","image":"","video":"","notes":"Trực thăng"]]
+precondition(AssistantPlan.isValid(assetResult,stage:"blender_assets")); assetResult["scenes"] = [[String:Any]](); precondition(AssistantPlan.isValid(assetResult,stage:"blender_assets"),"an empty list means the library is enough")
+assetResult["scenes"] = Array(repeating:["time":"1","chapter":"x","voice":"y","image":"","video":"","notes":""], count:41); precondition(!AssistantPlan.isValid(assetResult,stage:"blender_assets"))
+precondition(AssistantPlan.prompt(stage:"blender_script",context:[:]).contains("CHỈ dùng name"))
+let ctxPrompt = AssistantPlan.prompt(stage:"blender_context",context:["prompt":"xe tăng húc đổ Dinh Độc Lập"])
+precondition(ctxPrompt.contains("web search") && ctxPrompt.contains("Phương tiện và vũ khí") && AssistantPlan.baseInstructions(stage:"blender_context").contains("web search"))
+var ctxResult = ok; ctxResult["document"] = "Sự kiện: 30/4/1975"; precondition(AssistantPlan.isValid(ctxResult,stage:"blender_context")); ctxResult["document"] = " "; precondition(!AssistantPlan.isValid(ctxResult,stage:"blender_context"))
+precondition(AssistantPlan.prompt(stage:"blender_script",context:["background":"x"]).contains("CONTEXT.background"))
+print("Assistant plan passed: researched scene context, model suggestions, Blender instructions and prose rejection, blender_script stage, Short storyboard profile, 9:16 prompts, script mode, short_cut stage and validation")

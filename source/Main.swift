@@ -12,7 +12,7 @@ final class StudioImageScheme: NSObject, WKURLSchemeHandler {
         guard let url = task.request.url, url.host == "asset" else { task.didFailWithError(URLError(.badURL)); return }
         let name = url.lastPathComponent
         let file = root.appendingPathComponent(name).standardizedFileURL.resolvingSymlinksInPath()
-        guard !name.isEmpty, file.deletingLastPathComponent() == root,
+        guard !name.isEmpty, file.deletingLastPathComponent().standardizedFileURL.resolvingSymlinksInPath().path == root.standardizedFileURL.resolvingSymlinksInPath().path,
               let source = CGImageSourceCreateWithURL(file as CFURL, nil) else { task.didFailWithError(URLError(.fileDoesNotExist)); return }
         let full = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems?.contains { $0.name == "full" && $0.value == "1" } == true
         let options: [CFString: Any] = [kCGImageSourceCreateThumbnailFromImageAlways: true, kCGImageSourceThumbnailMaxPixelSize: full ? 2400 : 640, kCGImageSourceCreateThumbnailWithTransform: true]
@@ -41,6 +41,7 @@ final class Studio: NSObject, NSApplicationDelegate, WKScriptMessageHandler, WKU
     let credentials = CredentialStore()
     private var credentialRevisions: [String: Int] = [:]
     private var stagedRestore: (token: String, staged: ProjectBackup.Staged)?
+    lazy var blender: BlenderRender = { let b = BlenderRender(root: root); b.onUpdate = { [weak self] update in self?.reply(update, "nativeBlender") }; return b }()
     let root = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0].appendingPathComponent("HistoryStudio", isDirectory: true)
     func applicationDidFinishLaunching(_ notification: Notification) {
         if let iconURL = Bundle.main.url(forResource: "AppIcon", withExtension: "icns"), let icon = NSImage(contentsOf: iconURL) { NSApp.applicationIconImage = icon }
@@ -73,6 +74,10 @@ final class Studio: NSObject, NSApplicationDelegate, WKScriptMessageHandler, WKU
         tts.onUpdate = { [weak self] update in self?.reply(update, "nativeTTS") }
         timeline.onUpdate = { [weak self] update in self?.reply(update, "nativeTimeline") }
         plenxVideo.onUpdate = { [weak self] update in self?.reply(update, "nativePlenxImage") }
+        // After sleep, give Wi-Fi a moment, then let the page re-check PlenX tasks that were waiting.
+        NSWorkspace.shared.notificationCenter.addObserver(forName: NSWorkspace.didWakeNotification, object: nil, queue: .main) { [weak self] _ in
+            DispatchQueue.main.asyncAfter(deadline: .now() + 4) { self?.reply([:], "nativeSystemWake") }
+        }
         plenxImages.onUpdate = { [weak self] update in self?.reply(update, "nativePlenxImage") }
         plenxProbe.onUpdate = { [weak self] update in self?.reply(update, "nativePlenxTest") }
         elevenProbe.onUpdate = { [weak self] update in self?.reply(update, "nativeElevenTest") }
@@ -400,6 +405,22 @@ final class Studio: NSObject, NSApplicationDelegate, WKScriptMessageHandler, WKU
             } catch { reply(["error": "Không nhập được tài nguyên: \(error.localizedDescription)"]) }
         case "openAsset":
             if let path = body["path"] as? String, path.hasPrefix(root.appendingPathComponent("assets").path + "/") { NSWorkspace.shared.open(URL(fileURLWithPath: path)) }
+        case "blenderStatus": blender.status()
+        case "blenderChoose": blender.choose()
+        case "blenderModel": blender.importModel(body)
+        case "blenderRender": blender.render(body)
+        case "blenderCheck": blender.check(body)
+        case "blenderInspect": blender.inspect(body)
+        case "blenderLibrary": blender.libraryStatus()
+        case "blenderDownloadPack": blender.downloadPack(body["pack"] as? String ?? "")
+        case "modelIndexStatus": blender.modelIndexStatus()
+        case "modelIndexDownload": blender.downloadModelIndex()
+        case "modelSearch": blender.searchModels(body)
+        case "modelDownload": blender.downloadModel(body)
+        case "openModelPage":
+            if let raw = body["url"] as? String, let url = URL(string: raw), url.scheme == "https", url.host == "sketchfab.com" { NSWorkspace.shared.open(url) }
+        case "blenderCancel": blender.cancel()
+        case "blenderDownload": NSWorkspace.shared.open(URL(string: "https://www.blender.org/download/")!)
         case "backupCreate":
             guard let state = body["state"] as? [String: Any] else { return }
             let panel = NSSavePanel(); panel.allowedFileTypes = ["zip"]; panel.canCreateDirectories = true
@@ -433,7 +454,7 @@ final class Studio: NSObject, NSApplicationDelegate, WKScriptMessageHandler, WKU
                     await MainActor.run { [weak self] in
                         guard let self else { ProjectBackup.discard(staged); return }
                         self.stagedRestore = (token, staged)
-                        self.reply(["status": "preview", "token": token, "name": archive.lastPathComponent, "manifest": staged.manifest, "projects": staged.state["projects"] ?? [], "files": staged.files.count, "bytes": staged.bytes], "nativeBackup")
+                        self.reply(["status": "preview", "token": token, "name": archive.lastPathComponent, "manifest": staged.manifest, "projects": staged.state["projects"] ?? [], "modelLibrary": staged.state["modelLibrary"] ?? [], "files": staged.files.count, "bytes": staged.bytes], "nativeBackup")
                     }
                 } catch { await MainActor.run { [weak self] in self?.reply(["status": "error", "message": error.localizedDescription], "nativeBackup") } }
             }

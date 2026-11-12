@@ -10,7 +10,7 @@ STUDIO_APP="$STUDIO_TEMP/image/HistoryStudio.app"
 mkdir -p "$STUDIO_APP/Contents/MacOS" "$STUDIO_APP/Contents/Resources"
 cp "$STUDIO_SOURCE/Info.plist" "$STUDIO_APP/Contents/Info.plist"
 cp "$STUDIO_SOURCE/base.css" "$STUDIO_SOURCE/ui.css" "$STUDIO_SOURCE/ui.js" "$STUDIO_APP/Contents/Resources/"
-cp "$STUDIO_SOURCE"/*.js "$STUDIO_SOURCE/index.html" "$STUDIO_SOURCE/demo.json" "$STUDIO_SOURCE/import_storyboard.py" "$STUDIO_APP/Contents/Resources/"
+cp "$STUDIO_SOURCE"/*.js "$STUDIO_SOURCE/index.html" "$STUDIO_SOURCE/demo.json" "$STUDIO_SOURCE/import_storyboard.py" "$STUDIO_SOURCE/blender_render.py" "$STUDIO_APP/Contents/Resources/"
 cp -R "$STUDIO_SOURCE/assets" "$STUDIO_APP/Contents/Resources/"
 cp "$STUDIO_SOURCE/assets/AppIcon.icns" "$STUDIO_APP/Contents/Resources/AppIcon.icns"
 for STUDIO_ARCH in arm64 x86_64; do

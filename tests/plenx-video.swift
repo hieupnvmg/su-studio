@@ -5,9 +5,11 @@ final class FixtureProtocol: URLProtocol {
     static var failGeneration=false
     static var multiTest=false
     static var failUpload=false
+    static var offline=false
     override class func canInit(with request: URLRequest)->Bool { true }
     override class func canonicalRequest(for request:URLRequest)->URLRequest { request }
     override func startLoading() {
+        if Self.offline { client?.urlProtocol(self,didFailWithError:URLError(.notConnectedToInternet));return }
         assert(request.url?.host=="api.plenxai.com");assert(request.value(forHTTPHeaderField:"X-API-Key")=="pk_fixture")
         var data=request.httpBody
         if data==nil,let stream=request.httpBodyStream { stream.open();var bytes=Data();var buf=[UInt8](repeating:0,count:4096);while stream.hasBytesAvailable {let n=stream.read(&buf,maxLength:buf.count);if n<=0 {break};bytes.append(buf,count:n)};stream.close();data=bytes }
@@ -47,4 +49,12 @@ var bad=refs;bad["referencePaths"]=[image.path,"/tmp/outside.png"];before=Fixtur
 bad=refs;bad["referencePaths"]=Array(repeating:image.path,count:9);run(bad);assert(result?["status"] as? String == "error");assert(FixtureProtocol.calls.count==before)
 bad=refs;bad["model"]="veo-3-fast";run(bad);assert(result?["status"] as? String == "error");assert(FixtureProtocol.calls.count==before)
 FixtureProtocol.failUpload=true;run(refs);assert(result?["status"] as? String == "error");assert(FixtureProtocol.calls.count==before+2);assert(FixtureProtocol.calls.last!.0.hasSuffix("media-upload/direct"))
-print("PlenX video fixtures passed: reference upload, I2V payload, task polling, invalid task guard and no paid retry")
+// Asleep or just woken: no network while polling a task. That is temporary — keep the task alive and check again.
+FixtureProtocol.offline=true
+run(["requestId":"sleep","kind":"status","taskId":"task-1"])
+assert(result?["status"] as? String == "queued","network loss while polling must not end the task: \(String(describing:result))")
+assert(result?["transient"] as? Bool == true && result?["taskId"] as? String == "task-1")
+assert((result?["message"] as? String ?? "").contains("mạng"))
+FixtureProtocol.offline=false
+run(["requestId":"woke","kind":"status","taskId":"task-1"]);assert(result?["status"] as? String == "queued" && result?["transient"] == nil,"polling works again after wake")
+print("PlenX video fixtures passed: offline polling stays queued (sleep/wake), reference upload, I2V payload, task polling, invalid task guard and no paid retry")
