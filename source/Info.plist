@@ -11,9 +11,9 @@
 	<key>CFBundleName</key>
 	<string>Sử Studio</string>
 	<key>CFBundleShortVersionString</key>
-	<string>0.14.10</string>
+	<string>0.14.11</string>
 	<key>CFBundleVersion</key>
-	<string>40</string>
+	<string>41</string>
 	<key>UpdateRepository</key>
 	<string>hieupnvmg/su-studio</string>
 	<key>LSMinimumSystemVersion</key>
