@@ -6,15 +6,18 @@ function effectiveVisualStyle(b) {
 }
 
 function eraPrompt(p, scene) {
+    const lock = visualStyleLock(p);
     return [
         p.title ? 'Chủ đề dự án: ' + p.title : '',
         scene?.chapter ? 'Phân cảnh: ' + scene.chapter : '',
-        'Bám thời kỳ và địa điểm của nội dung cảnh. Dùng phục trang, đạo cụ, kiến trúc và công nghệ đúng thời điểm. Với bối cảnh đương đại, dùng mỹ thuật phim tài liệu hiện đại. Chỉ dùng cổ trang hoặc hiệu ứng giả cổ khi phù hợp thời kỳ của cảnh hoặc được yêu cầu rõ.'
+        lock
+            ? 'Bám thời kỳ và địa điểm của nội dung cảnh: phục trang, đạo cụ, kiến trúc và công nghệ đúng thời điểm, nhưng luôn vẽ theo phong cách hình cố định bên dưới.\n' + lock
+            : 'Bám thời kỳ và địa điểm của nội dung cảnh. Dùng phục trang, đạo cụ, kiến trúc và công nghệ đúng thời điểm. Với bối cảnh đương đại, dùng mỹ thuật phim tài liệu hiện đại. Chỉ dùng cổ trang hoặc hiệu ứng giả cổ khi phù hợp thời kỳ của cảnh hoặc được yêu cầu rõ.'
     ].filter(Boolean).join('\n');
 }
 
 function isDesignApproved(p){const b=p.visualBible;return !!b?.approved&&b.characters.every(c=>c.approved&&selectedCharacterImage(c))&&(b.characters.length?p.scenes.every(s=>s.designAssigned):!!b.noCharacters)}
-function visualBible(p){return p.visualBible??(p.visualBible={style:defaultVisualStyle,characters:[],approved:false,noCharacters:false})}
+function visualBible(p){return p.visualBible??(p.visualBible={style:visualStylePreset(p)?.design||defaultVisualStyle,characters:[],approved:false,noCharacters:false})}
 function selectedCharacterImage(c){return c.images?.find(a=>a.selected)}
 function profileSignature(b,c){return JSON.stringify([b.style,c.name,c.description])}
 function designSignature(p,s){const b=p.visualBible;if(!b)return '';return JSON.stringify([b.style,(s.characterIds||[]).map(cid=>b.characters.find(c=>c.id===cid)).filter(Boolean).map(c=>[c.id,c.name,c.description,selectedCharacterImage(c)?.id||''])])}

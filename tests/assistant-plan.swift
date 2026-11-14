@@ -27,4 +27,7 @@ let ctxPrompt = AssistantPlan.prompt(stage:"blender_context",context:["prompt":"
 precondition(ctxPrompt.contains("web search") && ctxPrompt.contains("Phương tiện và vũ khí") && AssistantPlan.baseInstructions(stage:"blender_context").contains("web search"))
 var ctxResult = ok; ctxResult["document"] = "Sự kiện: 30/4/1975"; precondition(AssistantPlan.isValid(ctxResult,stage:"blender_context")); ctxResult["document"] = " "; precondition(!AssistantPlan.isValid(ctxResult,stage:"blender_context"))
 precondition(AssistantPlan.prompt(stage:"blender_script",context:["background":"x"]).contains("CONTEXT.background"))
-print("Assistant plan passed: researched scene context, model suggestions, Blender instructions and prose rejection, blender_script stage, Short storyboard profile, 9:16 prompts, script mode, short_cut stage and validation")
+let stick = AssistantPlan.prompt(stage:"storyboard",context:["visualStyle":["key":"stick_history","name":"Người que · Hoạt hình lịch sử","description":"Đầu tròn trắng"]])
+precondition(stick.contains("PHONG CÁCH HÌNH ĐÃ CHỌN: Người que · Hoạt hình lịch sử") && stick.contains("KHÔNG chép lại") && stick.contains("HỒ SƠ NHÂN VẬT"))
+precondition(!AssistantPlan.prompt(stage:"storyboard",context:["visualStyle":"none"]).contains("PHONG CÁCH HÌNH ĐÃ CHỌN") && !long.contains("PHONG CÁCH HÌNH ĐÃ CHỌN"))
+print("Assistant plan passed: stickman style direction, researched scene context, model suggestions, Blender instructions and prose rejection, blender_script stage, Short storyboard profile, 9:16 prompts, script mode, short_cut stage and validation")

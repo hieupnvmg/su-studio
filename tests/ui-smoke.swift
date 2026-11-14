@@ -3,7 +3,7 @@ import JavaScriptCore
 let c=JSContext()!
 c.exceptionHandler={_,e in fatalError(e!.toString())}
 c.evaluateScript("var window={};var document={addEventListener:function(){}};function setInterval(){};var crypto={randomUUID:function(){return 'test-id'}};")
-for file in ["source/assistant.js", "source/script-import.js", "source/ui.js", "source/changelog.js", "source/updater.js", "source/tts.js", "source/assistant-progress.js", "source/reference-images.js", "source/tts-batch.js", "source/model-picker.js", "source/native-editor.js", "source/backup.js", "source/blender.js", "source/narration-player.js", "source/media-studio.js", "source/auto-tags.js", "source/short-clips.js", "source/visual-bible.js", "source/dialogue.js", "source/video-references.js", "source/excel-import.js", "source/angle-images.js"] { c.setObject(try String(contentsOfFile:file,encoding:.utf8),forKeyedSubscript:"source" as NSString);c.evaluateScript("new Function(source)") }
+for file in ["source/assistant.js", "source/script-import.js", "source/ui.js", "source/changelog.js", "source/updater.js", "source/tts.js", "source/assistant-progress.js", "source/reference-images.js", "source/tts-batch.js", "source/model-picker.js", "source/native-editor.js", "source/backup.js", "source/blender.js", "source/narration-player.js", "source/media-studio.js", "source/auto-tags.js", "source/short-clips.js", "source/visual-styles.js", "source/visual-bible.js", "source/dialogue.js", "source/video-references.js", "source/excel-import.js", "source/angle-images.js"] { c.setObject(try String(contentsOfFile:file,encoding:.utf8),forKeyedSubscript:"source" as NSString);c.evaluateScript("new Function(source)") }
 for name in ["assistant.js","assistant-progress.js","model-picker.js","ui.js"] { c.evaluateScript(try String(contentsOfFile:"source/"+name,encoding:.utf8)) }
 let html=try String(contentsOfFile:"source/index.html",encoding:.utf8)
 precondition(html.range(of:"<script src=\"dialogue.js\"")!.lowerBound < html.range(of:"render();if(native)send('load')")!.lowerBound, "Load state only after workflow scripts are ready")
@@ -11,7 +11,7 @@ let buildScript=try String(contentsOfFile:"source/build.sh",encoding:.utf8)
 for part in html.components(separatedBy:"<script src=\"").dropFirst() { let name=part.components(separatedBy:"\"")[0]; precondition(buildScript.contains("$STUDIO_SOURCE/"+name+"\""),"build.sh does not copy "+name) }
 let inline=String(html.components(separatedBy:"<script>")[1].components(separatedBy:"</script>")[0].components(separatedBy:"render();if(native)")[0])
 c.evaluateScript(inline)
-for name in ["script-import.js","changelog.js","updater.js","reference-images.js","narration-player.js","tts-batch.js","tts.js","media-studio.js","auto-tags.js","short-clips.js","visual-bible.js","dialogue.js","video-references.js","excel-import.js","angle-images.js","archive-media.js","backup.js","blender.js"] { c.evaluateScript(try String(contentsOfFile:"source/"+name,encoding:.utf8)) }
+for name in ["script-import.js","changelog.js","updater.js","reference-images.js","narration-player.js","tts-batch.js","tts.js","media-studio.js","auto-tags.js","short-clips.js","visual-styles.js","visual-bible.js","dialogue.js","video-references.js","excel-import.js","angle-images.js","archive-media.js","backup.js","blender.js"] { c.evaluateScript(try String(contentsOfFile:"source/"+name,encoding:.utf8)) }
 c.evaluateScript("""
 const fixture={id:'p',title:'Test <script>',scenes:[{id:'s',time:'00:00–00:20',chapter:'Chương 1',voice:'Lời kể',image:'Prompt',video:'Prompt video',approvals:{script:true,audio:true},assets:{audio:[{selected:true,path:'/test.mp3',text:'Lời kể'}]}}],references:[],guide:{sourceMode:'script',sourceScript:'Lời kể',brief:{duration:10,audience:'Test'},steps:{storyboard:{approved:true,draft:{scenes:[],document:'',sources:[]}}}}};
 state.projects=[fixture];selected='p';page='assistant';aiViewedStage='tts';
@@ -443,4 +443,30 @@ wakeTimers.splice(0);
 wakeP.scenes[0].videoJob.status='error';plenxImagePending=null;sent=[];startVideoBatch();if(wakeP.videoBatch||!wakeToasts.at(-1).includes('Đang kiểm tra lại 1 tác vụ'))throw Error('batch start re-checks unsettled tasks');
 wakeP.scenes[0].videoJob={status:'submitting',prompt:'Clip'};startVideoBatch();if(!wakeToasts.at(-1).includes('Cảnh 1')||!wakeToasts.at(-1).includes('Cho phép tạo mới'))throw Error('unknown submissions name the scene to check');
 """)
-print("UI scripts parse; sleep/wake recovery, Blender stage, changelog, backup and restore, Short format, framing, captions, short cuts and series, dashboard, overview, TTS, references, settings, escaping and workflow gate passed")
+c.evaluateScript("""
+// Stickman visual styles: picked per project, locked into every PlenX prompt, passed to the AI writer.
+let styleSeq=0;crypto.randomUUID=function(){return 'style-'+(++styleSeq)};confirm=function(){return true};save=function(){};render=function(){};let styleToasts=[];toast=function(m){styleToasts.push(m)};
+const plainP={id:'plain',title:'Nhà Trần',scenes:[],guide:{brief:{},steps:{}}};
+const stickP={id:'stick',title:'Nhà Trần',visualStyleKey:'stick_history',scenes:[{id:'s1',chapter:'Chương 1',image:'Vua Trần Nhân Tông',characterIds:[]}],guide:{brief:{},steps:{}}};
+if(!eraPrompt(stickP,stickP.scenes[0]).includes('stickman animated video')||!eraPrompt(stickP,stickP.scenes[0]).includes('AVOID:')||eraPrompt(stickP).includes('phim tài liệu hiện đại'))throw Error('stickman lock replaces the documentary line');
+if(eraPrompt(plainP).includes('stickman')||!eraPrompt(plainP).includes('phim tài liệu hiện đại'))throw Error('default style unchanged');
+if(visualLookLabel(stickP)!=='Ảnh hoạt hình người que 2D'||visualLookLabel(plainP)!=='Ảnh điện ảnh')throw Error('image label follows style');
+if(!visualPromptBrief(stickP).includes('người que lịch sử')||visualPromptBrief(stickP).includes('9:16')||!visualPromptBrief({...stickP,format:'short'}).includes('9:16'))throw Error('preset brief follows format');
+if(visualPromptBrief({...stickP,visualPromptBrief:'Tự viết'})!=='Tự viết')throw Error('custom brief kept');
+if(aiContext(stickP,'ideas').visualStyle?.name!=='Người que · Hoạt hình lịch sử'||aiContext(plainP,'ideas').visualStyle!==null||JSON.stringify(aiContext(stickP,'ideas')).includes('mitten'))throw Error('AI gets the style name, not the long lock');
+if(!visualBible({...stickP}).style.includes('người que')||visualBible({...plainP}).style!==defaultVisualStyle)throw Error('new visual bible starts from preset');
+if(!sceneDesignPrompt({...stickP,visualBible:{style:'x',characters:[]}},stickP.scenes[0]).includes('stickman animated video'))throw Error('design prompt carries the lock');
+if(applyNewVisualStyle({},'stick_cozy').visualStyleKey!=='stick_cozy'||'visualStyleKey' in applyNewVisualStyle({},'nope'))throw Error('new project style');
+if(!visualStyleOptions('stick_dark').includes('value="stick_dark" selected')||Object.keys(visualStylePresets).length!==5)throw Error('style options');
+for(const [k,s] of Object.entries(visualStylePresets))if(!s.anchor.startsWith('STYLE: stickman animated video')||!s.brief||!s.shortBrief.includes('9:16')||!s.design||!s.hint)throw Error('preset complete '+k);
+// Switching style resets untouched briefs and design text, keeps custom ones on request and invalidates design.
+const switchP={id:'switch',title:'T',scenes:[{id:'a',assets:{image:[{id:'i',selected:true}]},approvals:{image:true},characterIds:[]}],visualBible:{style:defaultVisualStyle,characters:[{id:'c',approved:true}],approved:true},guide:{brief:{},steps:{}}};state.projects=[switchP];selected='switch';plenxImagePending=null;
+setProjectVisualStyle('stick_history');if(switchP.visualStyleKey!=='stick_history'||!switchP.visualBible.style.includes('người que')||switchP.visualBible.approved||switchP.visualBible.characters[0].approved||!styleToasts.at(-1).includes('Hoạt hình lịch sử'))throw Error('switch to stickman');
+switchP.visualPromptBrief='Brief riêng';confirm=function(m){return !m.includes('định hướng prompt')};setProjectVisualStyle('');if('visualStyleKey' in switchP||switchP.visualPromptBrief!=='Brief riêng'||switchP.visualBible.style!==defaultVisualStyle)throw Error('switch back keeps custom brief when declined');
+switchP.visualBible.style='Màu nước tự viết';confirm=function(){return true};setProjectVisualStyle('stick_dark');if(switchP.visualBible.style!=='Màu nước tự viết'||'visualPromptBrief' in switchP)throw Error('custom design text kept, brief replaced on yes');
+confirm=function(){return false};setProjectVisualStyle('stick_light');if(switchP.visualStyleKey!=='stick_dark')throw Error('cancel keeps style when media exists');
+if(!visualStylePanel(switchP,false).includes('project-visual-style')||!visualStylePanel(switchP,false).includes('MIT'))throw Error('panel shows picker and credit');
+// A Short cut from a stickman video keeps the style.
+if(!String(createShortProject).includes('visualStyleKey:src.visualStyleKey'))throw Error('short keeps style');
+""")
+print("UI scripts parse; stickman styles, sleep/wake recovery, Blender stage, changelog, backup and restore, Short format, framing, captions, short cuts and series, dashboard, overview, TTS, references, settings, escaping and workflow gate passed")
