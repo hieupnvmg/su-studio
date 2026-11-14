@@ -3,6 +3,12 @@
 // Newest first; the date is filled when the version is released.
 const appChangelog=
 [
+ {"version":"0.14.12","date":"2026-11-15","title":"Phong cách người que và lỗi PlenX rõ ràng hơn","items":[
+  "Chọn phong cách hình cho từng dự án ngay khi tạo video mới, hoặc đổi trong panel Định hướng prompt ảnh & video: Phim tài liệu điện ảnh hoặc 5 kiểu người que (Hoạt hình lịch sử, Kể chuyện ấm áp, Tiền sử hài hước, Tối giản nền đen, Tối giản nền trắng).",
+  "Phong cách người que: app tự thêm mô tả nét vẽ cố định vào mọi prompt ảnh, ảnh góc máy, ảnh nhân vật chuẩn và video gửi PlenX để nhân vật đồng bộ giữa các cảnh; AI viết storyboard theo đúng phong cách, có hồ sơ nhân vật.",
+  "Short cắt từ video dài giữ nguyên phong cách hình. Phong cách người que phỏng theo Stickman Video Director (mã nguồn mở MIT).",
+  "Sửa lỗi: khi PlenX từ chối tạo ảnh/video, app hiện lý do PlenX gửi về (ví dụ nội dung bị chặn, hết credit) và cho tạo lại ngay, không bắt kiểm tra lịch sử vì chưa có tác vụ nào được tạo."
+ ]},
  {"version":"0.14.11","date":"2026-11-12","title":"Sửa lỗi máy ngủ khi tạo video, dựng 3D bằng Blender (thử nghiệm)","items":[
   "Sửa lỗi: máy ngủ hoặc mất mạng khi đang tạo video/ảnh PlenX làm tác vụ bị kẹt và không tạo tiếp được. Giờ app tự kiểm tra lại khi mạng có lại và khi máy thức dậy; nút Tạo tất cả clip còn thiếu tự kiểm tra các tác vụ chưa rõ kết quả.",
   "Bước riêng tuỳ chọn \"Dựng 3D · Blender\", dùng được bất cứ lúc nào, không cần storyboard: render clip 3D bằng Blender cài trên máy, không tốn credit.",
