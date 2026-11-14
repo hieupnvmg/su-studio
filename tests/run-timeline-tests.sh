@@ -11,5 +11,5 @@ with wave.open(sys.argv[1],'wb') as w:
  w.setparams((1,2,44100,44673,'NONE','not compressed'))
  w.writeframes(b''.join(struct.pack('<h',int(math.sin(i*2*math.pi*440/44100)*1000)) for i in range(44673)))
 PY
-swiftc -suppress-warnings "$STUDIO_TEST_ROOT/source/Timeline.swift" "$STUDIO_TEST_TEMP/main.swift" -o "$STUDIO_TEST_TEMP/check" -framework Cocoa -framework AVFoundation -framework AVKit
+swiftc -suppress-warnings "$STUDIO_TEST_ROOT/source/Timeline.swift" "$STUDIO_TEST_ROOT/source/PlenXProbe.swift" "$STUDIO_TEST_TEMP/main.swift" -o "$STUDIO_TEST_TEMP/check" -framework Cocoa -framework AVFoundation -framework AVKit
 "$STUDIO_TEST_TEMP/check" "$STUDIO_TEST_TEMP"

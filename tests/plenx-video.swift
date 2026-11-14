@@ -3,6 +3,7 @@ import Foundation
 final class FixtureProtocol: URLProtocol {
     static var calls:[(String,[String:Any])]=[]
     static var failGeneration=false
+    static var generationCode=400
     static var multiTest=false
     static var failUpload=false
     static var offline=false
@@ -19,7 +20,7 @@ final class FixtureProtocol: URLProtocol {
         else if path.hasSuffix("/generate/video") || path.hasSuffix("/generate/video-omni") {
             if Self.multiTest {assert(payload["reference_images"] as? [String] == ["https://media.plenxai.com/reference-1.png","https://media.plenxai.com/reference-2.png"]);assert(payload["input_image_url"]==nil);assert(payload["start_image_url"]==nil)}
             else if path.hasSuffix("video-omni") {assert(payload["input_image_url"] as? String == "https://media.plenxai.com/reference.png");assert(payload["resolution"] as? String == "720p");assert(payload["start_image_url"]==nil);assert(payload["quality"]==nil)}
-            else { assert(payload["start_image_url"] as? String == "https://media.plenxai.com/reference.png");assert(payload["mode"] as? String == "i2v");assert(payload["quality"] as? String == "720p") };assert(payload["aspect_ratio"] as? String == "16:9");assert(payload["duration"] as? Int == 6);code=Self.failGeneration ? 400:200;response=Self.failGeneration ? ["success":false]:["success":true,"task_id":"task-1","status":"queued"] }
+            else { assert(payload["start_image_url"] as? String == "https://media.plenxai.com/reference.png");assert(payload["mode"] as? String == "i2v");assert(payload["quality"] as? String == "720p") };assert(payload["aspect_ratio"] as? String == "16:9");assert(payload["duration"] as? Int == 6);code=Self.failGeneration ? Self.generationCode:200;response=Self.failGeneration ? ["success":false,"detail":[["msg":"Prompt contains restricted content"]]]:["success":true,"task_id":"task-1","status":"queued"] }
         else { assert(path.hasSuffix("/status/task-1"));response=["success":true,"task_id":"task-1","status":"processing"] }
         client?.urlProtocol(self,didReceive:HTTPURLResponse(url:request.url!,statusCode:code,httpVersion:nil,headerFields:["Content-Type":"application/json"])!,cacheStoragePolicy:.notAllowed)
         client?.urlProtocol(self,didLoad:try! JSONSerialization.data(withJSONObject:response));client?.urlProtocolDidFinishLoading(self)
@@ -34,21 +35,25 @@ let service=PlenXVideo(root:root,configuration:config)
 var result:[String:Any]?
 service.onUpdate={result=$0}
 func run(_ body:[String:Any]) { result=nil;service.request(body,key:"pk_fixture");let deadline=Date().addingTimeInterval(10);while result==nil && Date()<deadline {RunLoop.current.run(until:Date().addingTimeInterval(0.01))};assert(result != nil) }
+var before=0
 let generate:[String:Any]=["requestId":"gen","kind":"generate","prompt":"Camera pans slowly","model":"veo-3.1-fast","duration":6,"quality":"720p","imagePath":image.path]
 run(generate);assert(result?["status"] as? String == "queued");assert(result?["taskId"] as? String == "task-1");assert(FixtureProtocol.calls.count==2)
 run(["requestId":"poll","kind":"status","taskId":"task-1"]);assert(result?["status"] as? String == "queued");assert(FixtureProtocol.calls.count==3)
-FixtureProtocol.failGeneration=true;run(generate);assert(result?["status"] as? String == "error");assert(FixtureProtocol.calls.count==5)
-run(["requestId":"invalid","kind":"status","taskId":"../other"]);assert(result?["status"] as? String == "error");assert(FixtureProtocol.calls.count==5)
+FixtureProtocol.failGeneration=true;run(generate);assert(result?["status"] as? String == "failed" && result?["rejected"] as? Bool == true,"a 400 means PlenX refused: retry allowed");assert(FixtureProtocol.calls.count==5)
+assert((result?["message"] as? String ?? "").contains("Prompt contains restricted content"),"PlenX's reason is shown: \(String(describing:result))")
+FixtureProtocol.generationCode=500;run(generate);assert(result?["status"] as? String == "error" && result?["rejected"] == nil,"a server error may have created a task: keep the check-history guard");assert((result?["message"] as? String ?? "").contains("restricted content"));FixtureProtocol.generationCode=400
+before=FixtureProtocol.calls.count
+run(["requestId":"invalid","kind":"status","taskId":"../other"]);assert(result?["status"] as? String == "error");assert(FixtureProtocol.calls.count==before)
 FixtureProtocol.failGeneration=false
 var omni=generate;omni["endpoint"]="/developer/generate/video-omni";omni["model"]="kling-4.0"
-run(omni);assert(result?["status"] as? String == "queued");assert(FixtureProtocol.calls.last?.0.hasSuffix("/generate/video-omni")==true);assert(FixtureProtocol.calls.count==7)
+run(omni);assert(result?["status"] as? String == "queued");assert(FixtureProtocol.calls.last?.0.hasSuffix("/generate/video-omni")==true);assert(FixtureProtocol.calls.count==before+2)
 let second=folder.appendingPathComponent("second.png");try bitmap.representation(using:.png,properties:[:])!.write(to:second)
 FixtureProtocol.multiTest=true;var refs=omni;refs["referencePaths"]=[image.path,second.path];refs["model"]="grok-video"
-var before=FixtureProtocol.calls.count;run(refs);assert(result?["status"] as? String == "queued");assert(FixtureProtocol.calls.count==before+3)
+before=FixtureProtocol.calls.count;run(refs);assert(result?["status"] as? String == "queued");assert(FixtureProtocol.calls.count==before+3)
 var bad=refs;bad["referencePaths"]=[image.path,"/tmp/outside.png"];before=FixtureProtocol.calls.count;run(bad);assert(result?["status"] as? String == "error");assert(FixtureProtocol.calls.count==before)
 bad=refs;bad["referencePaths"]=Array(repeating:image.path,count:9);run(bad);assert(result?["status"] as? String == "error");assert(FixtureProtocol.calls.count==before)
 bad=refs;bad["model"]="veo-3-fast";run(bad);assert(result?["status"] as? String == "error");assert(FixtureProtocol.calls.count==before)
-FixtureProtocol.failUpload=true;run(refs);assert(result?["status"] as? String == "error");assert(FixtureProtocol.calls.count==before+2);assert(FixtureProtocol.calls.last!.0.hasSuffix("media-upload/direct"))
+FixtureProtocol.failUpload=true;run(refs);assert(result?["status"] as? String == "failed","upload failed before any generation request");assert(FixtureProtocol.calls.count==before+2);assert(FixtureProtocol.calls.last!.0.hasSuffix("media-upload/direct"))
 // Asleep or just woken: no network while polling a task. That is temporary — keep the task alive and check again.
 FixtureProtocol.offline=true
 run(["requestId":"sleep","kind":"status","taskId":"task-1"])
@@ -57,4 +62,4 @@ assert(result?["transient"] as? Bool == true && result?["taskId"] as? String == 
 assert((result?["message"] as? String ?? "").contains("mạng"))
 FixtureProtocol.offline=false
 run(["requestId":"woke","kind":"status","taskId":"task-1"]);assert(result?["status"] as? String == "queued" && result?["transient"] == nil,"polling works again after wake")
-print("PlenX video fixtures passed: offline polling stays queued (sleep/wake), reference upload, I2V payload, task polling, invalid task guard and no paid retry")
+print("PlenX video fixtures passed: PlenX rejection reason and retry, offline polling stays queued (sleep/wake), reference upload, I2V payload, task polling, invalid task guard and no paid retry")

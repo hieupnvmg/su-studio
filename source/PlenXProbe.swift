@@ -3,6 +3,29 @@ import AppKit
 import ImageIO
 
 /// Checks an authenticated, read-only endpoint. Never submits generation jobs.
+// Why PlenX refused a request, read from its error body ({"detail": ...}, {"message": ...} or {"error": ...}).
+// A rejection means no task was created: a 4xx other than timeout/conflict/rate limit, or success:false.
+enum PlenXFailure {
+    static func detail(_ data: Data?) -> String {
+        guard let data = data, let json = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] else { return "" }
+        func text(_ value: Any?) -> String? {
+            if let s = value as? String { return s }
+            if let list = value as? [[String: Any]] { return list.compactMap { $0["msg"] as? String ?? $0["message"] as? String }.joined(separator: "; ") }
+            if let d = value as? [String: Any] { return text(d["message"]) ?? text(d["detail"]) }
+            return nil
+        }
+        let raw = text(json["detail"]) ?? text(json["message"]) ?? text(json["error"]) ?? ""
+        let line = raw.replacingOccurrences(of: "\n", with: " ").trimmingCharacters(in: .whitespacesAndNewlines)
+        return line.count > 300 ? String(line.prefix(300)) + "…" : line
+    }
+    static func rejected(status: Int, data: Data?) -> Bool {
+        if (400..<500).contains(status) { return ![408, 409, 425, 429].contains(status) }
+        guard (200..<300).contains(status), let data = data, let json = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] else { return false }
+        return json["success"] as? Bool == false && json["task_id"] == nil
+    }
+    static func reason(_ detail: String) -> String { detail.isEmpty ? "" : ": " + detail }
+}
+
 final class PlenXProbe: NSObject, URLSessionTaskDelegate {
     var onUpdate: (([String: Any]) -> Void)?
     private var session: URLSession?
@@ -140,7 +163,11 @@ final class PlenXImages: NSObject, URLSessionTaskDelegate {
             }
             guard error == nil, (200..<300).contains(status), let data = data,
                   let json = (try? JSONSerialization.jsonObject(with:data)) as? [String:Any], json["success"] as? Bool != false else {
-                reply(["status":"error","message":kind == "generate" ? "Chưa xác nhận được tác vụ PlenX (HTTP \(status)). Không tự gửi lại. Kiểm tra lịch sử PlenX trước khi tạo mới vì có thể đã dùng credit." : "Không đọc được PlenX (HTTP \(status)). Kiểm tra key, quyền API, credit hoặc thử kiểm tra lại tác vụ."]); return
+                let detail = PlenXFailure.detail(data)
+                if kind == "generate", error == nil, PlenXFailure.rejected(status: status, data: data) {
+                    reply(["status":"failed","rejected":true,"message":"PlenX từ chối yêu cầu tạo ảnh (HTTP \(status))\(PlenXFailure.reason(detail)). Chưa có tác vụ nào được tạo; sửa prompt, ảnh hoặc model rồi tạo lại."]); return
+                }
+                reply(["status":"error","message":kind == "generate" ? "Chưa xác nhận được tác vụ PlenX (HTTP \(status))\(PlenXFailure.reason(detail)). Không tự gửi lại. Kiểm tra lịch sử PlenX trước khi tạo mới vì có thể đã dùng credit." : "Không đọc được PlenX (HTTP \(status))\(PlenXFailure.reason(detail)). Kiểm tra key, quyền API, credit hoặc thử kiểm tra lại tác vụ."]); return
             }
             if kind == "models" {
                 let models = (json["image_models"] as? [[String:Any]] ?? []).filter { !Set($0["aspect_ratios"] as? [String] ?? []).isDisjoint(with:["16:9","9:16"]) }

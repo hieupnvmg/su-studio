@@ -28,4 +28,11 @@ run(paths);assert(result?["status"] as? String=="queued");assert(ImageFixture.up
 run(paths);assert(result?["status"] as? String=="queued");assert(ImageFixture.uploads==2&&ImageFixture.generations==2)
 run(["/etc/passwd"]);assert(result?["status"] as? String=="error");assert(ImageFixture.uploads==2&&ImageFixture.generations==2)
 ImageFixture.failUpload=true;run([folder.appendingPathComponent("three.png").path]);assert(result?["status"] as? String=="error");assert(ImageFixture.generations==2)
-print("Image reference fixtures passed: real local image uploads, ordered references_urls, cache reuse, path guard, no generation on failed reference upload")
+func body(_ o:[String:Any])->Data { try! JSONSerialization.data(withJSONObject:o) }
+assert(PlenXFailure.detail(body(["detail":"Prompt blocked by safety filter"]))=="Prompt blocked by safety filter")
+assert(PlenXFailure.detail(body(["detail":[["msg":"aspect_ratio invalid"],["msg":"duration invalid"]]]))=="aspect_ratio invalid; duration invalid")
+assert(PlenXFailure.detail(body(["error":["message":"Insufficient credits"]]))=="Insufficient credits" && PlenXFailure.detail(nil)=="" && PlenXFailure.detail(Data("<html>".utf8))=="")
+assert(PlenXFailure.rejected(status:400,data:nil) && PlenXFailure.rejected(status:422,data:nil) && !PlenXFailure.rejected(status:429,data:nil) && !PlenXFailure.rejected(status:500,data:nil) && !PlenXFailure.rejected(status:0,data:nil))
+assert(PlenXFailure.rejected(status:200,data:body(["success":false,"message":"x"])) && !PlenXFailure.rejected(status:200,data:body(["success":false,"task_id":"t"])) && !PlenXFailure.rejected(status:200,data:Data("oops".utf8)))
+assert(PlenXFailure.detail(body(["detail":String(repeating:"a",count:400)])).count==301)
+print("Image reference fixtures passed: PlenX rejection reasons, real local image uploads, ordered references_urls, cache reuse, path guard, no generation on failed reference upload")

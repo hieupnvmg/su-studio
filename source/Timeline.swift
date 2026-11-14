@@ -13,13 +13,17 @@ final class PlenXVideo: NSObject, URLSessionTaskDelegate {
         return URLSession(configuration:c, delegate:self, delegateQueue:nil)
     }()
     init(root: URL, configuration: URLSessionConfiguration = .ephemeral) { self.root = root.appendingPathComponent("assets").standardizedFileURL.resolvingSymlinksInPath(); self.configuration = configuration; super.init() }
+    // Set before a failed api() completion: whether PlenX definitely refused (no task) and its reason.
+    var lastFailure:(rejected:Bool,detail:String) = (false,"")
     func api(_ path:String, key:String, payload:[String:Any]? = nil, completion:@escaping ([String:Any]?,Int)->Void) {
         var r = URLRequest(url:URL(string:"https://api.plenxai.com/api/v1/developer"+path)!)
         r.setValue(key,forHTTPHeaderField:"X-API-Key")
         if let payload = payload { r.httpMethod = "POST"; r.setValue("application/json",forHTTPHeaderField:"Content-Type"); r.httpBody = try? JSONSerialization.data(withJSONObject:payload) }
         session.dataTask(with:r) { data,response,error in
             let code = (response as? HTTPURLResponse)?.statusCode ?? 0
-            guard error == nil, (200..<300).contains(code), let data = data, let json = (try? JSONSerialization.jsonObject(with:data)) as? [String:Any],json["success"] as? Bool != false else { completion(nil,code); return }; completion(json,code)
+            guard error == nil, (200..<300).contains(code), let data = data, let json = (try? JSONSerialization.jsonObject(with:data)) as? [String:Any],json["success"] as? Bool != false else {
+                self.lastFailure = (error == nil && PlenXFailure.rejected(status:code,data:data), PlenXFailure.detail(data)); completion(nil,code); return
+            }; completion(json,code)
         }.resume()
     }
     func request(_ body:[String:Any], key:String) {
@@ -31,7 +35,7 @@ final class PlenXVideo: NSObject, URLSessionTaskDelegate {
             guard let task = body["taskId"] as? String, task.range(of:"^[A-Za-z0-9_-]+$",options:.regularExpression) != nil else { reply(["status":"error","message":"Mã tác vụ không hợp lệ."]); return }
             api("/status/"+task,key:key) { json,code in
                 // No HTTP response at all: the Mac was asleep or the network is not back yet. The task is still on PlenX; keep checking.
-                guard let json = json else { reply(code == 0 ? ["status":"queued","taskId":task,"transient":true,"message":"Mất kết nối mạng (máy vừa ngủ?). Sẽ tự kiểm tra lại tác vụ, không tạo lượt mới."] : ["status":"error","taskId":task,"message":"Chưa đọc được tác vụ (HTTP \(code)). Kiểm tra lại, không tạo lại tự động."]); return }
+                guard let json = json else { reply(code == 0 ? ["status":"queued","taskId":task,"transient":true,"message":"Mất kết nối mạng (máy vừa ngủ?). Sẽ tự kiểm tra lại tác vụ, không tạo lượt mới."] : ["status":"error","taskId":task,"message":"Chưa đọc được tác vụ (HTTP \(code))\(PlenXFailure.reason(self.lastFailure.detail)). Kiểm tra lại, không tạo lại tự động."]); return }
                 let state = json["status"] as? String ?? "queued"
                 if ["error","failed"].contains(state) { reply(["status":"failed","taskId":task,"message":"PlenX báo tạo video thất bại. Kiểm tra lịch sử trước khi tạo lại."]); return }
                 guard ["completed","succeeded"].contains(state) else { reply(["status":"queued","taskId":task,"message":"PlenX đang tạo video…"]); return }
@@ -67,7 +71,7 @@ final class PlenXVideo: NSObject, URLSessionTaskDelegate {
         func upload(_ index:Int,_ urls:[String]) {
             if index < images.count {
                 self.api("/media-upload/direct",key:key,payload:["image_data":"data:image/png;base64,"+images[index].base64EncodedString(),"filename":"reference-\(index+1).png","media_type":"image","aspect_ratio":"16:9"]) { uploaded,code in
-                    guard let raw = (uploaded?["url"] ?? uploaded?["public_url"]) as? String, let url=URL(string:raw),url.scheme=="https",url.user==nil,url.password==nil else { reply(["status":"error","message":"Chưa tải được ảnh tham chiếu \(index+1) lên PlenX (HTTP \(code)). Chưa gửi yêu cầu tạo video."]);return }
+                    guard let raw = (uploaded?["url"] ?? uploaded?["public_url"]) as? String, let url=URL(string:raw),url.scheme=="https",url.user==nil,url.password==nil else { reply(["status":"failed","rejected":true,"message":"Chưa tải được ảnh tham chiếu \(index+1) lên PlenX (HTTP \(code))\(PlenXFailure.reason(self.lastFailure.detail)). Chưa gửi yêu cầu tạo video."]);return }
                     upload(index+1,urls+[raw])
                 };return
             }
@@ -77,7 +81,11 @@ final class PlenXVideo: NSObject, URLSessionTaskDelegate {
             else if endpoint.hasSuffix("video-omni") { payload["input_image_url"]=urls[0];payload["resolution"]=quality }
             else { payload["mode"]="i2v";payload["start_image_url"]=urls[0];payload["quality"]=quality }
             self.api(endpoint.replacingOccurrences(of:"/developer",with:""),key:key,payload:payload) { json,code in
-                guard let task = json?["task_id"] as? String,!task.isEmpty else { reply(["status":"error","message":"Chưa xác nhận được yêu cầu tạo video (HTTP \(code)). Kiểm tra lịch sử PlenX trước khi tạo lại; có thể đã dùng credit."]);return };reply(["status":"queued","taskId":task,"message":"PlenX đã nhận yêu cầu tạo video…"])
+                guard let task = json?["task_id"] as? String,!task.isEmpty else {
+                    let failure:(rejected:Bool,detail:String) = json == nil ? self.lastFailure : (false,"")
+                    if failure.rejected { reply(["status":"failed","rejected":true,"message":"PlenX từ chối yêu cầu tạo video (HTTP \(code))\(PlenXFailure.reason(failure.detail)). Chưa có tác vụ nào được tạo; sửa prompt, ảnh hoặc model rồi tạo lại."]);return }
+                    reply(["status":"error","message":"Chưa xác nhận được yêu cầu tạo video (HTTP \(code))\(PlenXFailure.reason(failure.detail)). Kiểm tra lịch sử PlenX trước khi tạo lại; có thể đã dùng credit."]);return
+                };reply(["status":"queued","taskId":task,"message":"PlenX đã nhận yêu cầu tạo video…"])
             }
         }
         upload(0,[])
