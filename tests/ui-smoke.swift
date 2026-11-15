@@ -3,7 +3,7 @@ import JavaScriptCore
 let c=JSContext()!
 c.exceptionHandler={_,e in fatalError(e!.toString())}
 c.evaluateScript("var window={};var document={addEventListener:function(){}};function setInterval(){};var crypto={randomUUID:function(){return 'test-id'}};")
-for file in ["source/assistant.js", "source/script-import.js", "source/ui.js", "source/changelog.js", "source/updater.js", "source/tts.js", "source/assistant-progress.js", "source/reference-images.js", "source/tts-batch.js", "source/model-picker.js", "source/native-editor.js", "source/backup.js", "source/blender.js", "source/narration-player.js", "source/media-studio.js", "source/auto-tags.js", "source/short-clips.js", "source/visual-styles.js", "source/visual-bible.js", "source/dialogue.js", "source/video-references.js", "source/excel-import.js", "source/angle-images.js"] { c.setObject(try String(contentsOfFile:file,encoding:.utf8),forKeyedSubscript:"source" as NSString);c.evaluateScript("new Function(source)") }
+for file in ["source/assistant.js", "source/script-import.js", "source/ui.js", "source/changelog.js", "source/updater.js", "source/tts.js", "source/assistant-progress.js", "source/reference-images.js", "source/tts-batch.js", "source/model-picker.js", "source/native-editor.js", "source/backup.js", "source/blender.js", "source/narration-player.js", "source/media-studio.js", "source/auto-tags.js", "source/short-clips.js", "source/visual-styles.js", "source/visual-bible.js", "source/music.js", "source/motion-stills.js", "source/plenx-cost.js", "source/map-scenes.js", "source/dialogue.js", "source/video-references.js", "source/excel-import.js", "source/angle-images.js"] { c.setObject(try String(contentsOfFile:file,encoding:.utf8),forKeyedSubscript:"source" as NSString);c.evaluateScript("new Function(source)") }
 for name in ["assistant.js","assistant-progress.js","model-picker.js","ui.js"] { c.evaluateScript(try String(contentsOfFile:"source/"+name,encoding:.utf8)) }
 let html=try String(contentsOfFile:"source/index.html",encoding:.utf8)
 precondition(html.range(of:"<script src=\"dialogue.js\"")!.lowerBound < html.range(of:"render();if(native)send('load')")!.lowerBound, "Load state only after workflow scripts are ready")
@@ -11,7 +11,7 @@ let buildScript=try String(contentsOfFile:"source/build.sh",encoding:.utf8)
 for part in html.components(separatedBy:"<script src=\"").dropFirst() { let name=part.components(separatedBy:"\"")[0]; precondition(buildScript.contains("$STUDIO_SOURCE/"+name+"\""),"build.sh does not copy "+name) }
 let inline=String(html.components(separatedBy:"<script>")[1].components(separatedBy:"</script>")[0].components(separatedBy:"render();if(native)")[0])
 c.evaluateScript(inline)
-for name in ["script-import.js","changelog.js","updater.js","reference-images.js","narration-player.js","tts-batch.js","tts.js","media-studio.js","auto-tags.js","short-clips.js","visual-styles.js","visual-bible.js","dialogue.js","video-references.js","excel-import.js","angle-images.js","archive-media.js","backup.js","blender.js"] { c.evaluateScript(try String(contentsOfFile:"source/"+name,encoding:.utf8)) }
+for name in ["script-import.js","changelog.js","updater.js","reference-images.js","narration-player.js","tts-batch.js","tts.js","media-studio.js","auto-tags.js","short-clips.js","visual-styles.js","visual-bible.js","dialogue.js","video-references.js","excel-import.js","angle-images.js","archive-media.js","backup.js","blender.js","music.js","motion-stills.js","plenx-cost.js","map-scenes.js"] { c.evaluateScript(try String(contentsOfFile:"source/"+name,encoding:.utf8)) }
 c.evaluateScript("""
 const fixture={id:'p',title:'Test <script>',scenes:[{id:'s',time:'00:00–00:20',chapter:'Chương 1',voice:'Lời kể',image:'Prompt',video:'Prompt video',approvals:{script:true,audio:true},assets:{audio:[{selected:true,path:'/test.mp3',text:'Lời kể'}]}}],references:[],guide:{sourceMode:'script',sourceScript:'Lời kể',brief:{duration:10,audience:'Test'},steps:{storyboard:{approved:true,draft:{scenes:[],document:'',sources:[]}}}}};
 state.projects=[fixture];selected='p';page='assistant';aiViewedStage='tts';
@@ -334,7 +334,7 @@ blenderPromptFromScene(c2.id,'S1');if(!c2.prompt.includes('Ảnh bãi cọc')||c
 blenderInfo={status:'missing'};sent=[];renderBlender(c1.id);if(sent.length)throw Error('no render without Blender');
 blenderInfo={status:'found',version:'4.2.3',path:'/Applications/Blender.app'};
 sent=[];renderBlender(c1.id);const rq=sent.find(x=>x.action==='blenderRender').body;
-if(rq.clipId!==c1.id||rq.mode!=='script'||rq.aspectRatio!=='9:16'||rq.camera!=='dolly'||rq.duration!==6||rq.script!=='ground()\\nbox("Thuyen")')throw Error('render request');
+if(rq.clipId!==c1.id||rq.mode!=='script'||rq.aspectRatio!=='9:16'||rq.camera!=='dolly'||rq.duration!==6||rq.script!=='ground()\\nbox("Thuyen")')throw Error('render request '+JSON.stringify(mreq));
 sent=[];renderBlender(c2.id);if(sent.length)throw Error('one render at a time');
 window.nativeBlender({requestId:rq.requestId,projectId:'blp',clipId:c1.id,status:'running',progress:0.5,message:'Đang render khung 90/180…'});if(blenderJob.progress!==0.5)throw Error('progress kept');
 window.nativeBlender({requestId:'other',projectId:'blp',clipId:c1.id,status:'completed',path:'/x.mp4'});if(!blenderJob)throw Error('foreign reply ignored');
@@ -469,4 +469,86 @@ if(!visualStylePanel(switchP,false).includes('project-visual-style')||!visualSty
 // A Short cut from a stickman video keeps the style.
 if(!String(createShortProject).includes('visualStyleKey:src.visualStyleKey'))throw Error('short keeps style');
 """)
-print("UI scripts parse; stickman styles, sleep/wake recovery, Blender stage, changelog, backup and restore, Short format, framing, captions, short cuts and series, dashboard, overview, TTS, references, settings, escaping and workflow gate passed")
+c.evaluateScript("""
+// Karaoke captions: on by default, sent with the export, switchable to phrase captions.
+const capP={id:'cap',title:'Cap',format:'short',scenes:[],guide:{brief:{},steps:{}}};state.projects=[capP];selected='cap';
+if(timelineFrame(capP).captionStyle!=='words'||!timelineFrameControls(capP,30).includes('Từng chữ sáng theo giọng')||!timelineFrameControls(capP,30).includes('0.14.13'))throw Error('word captions default');
+setTimelineFrame('captionStyle','phrase');if(timelineFrame(capP).captionStyle!=='phrase'||timelineFrameControls(capP,30).includes('0.14.13')||!timelineFrameControls(capP,30).includes('value="phrase" selected'))throw Error('phrase captions');
+setTimelineFrame('captions',false);if(timelineFrameControls(capP,30).includes('Kiểu phụ đề'))throw Error('style hidden without captions');
+if(!String(timelineRequest).includes('captionStyle:frame.captionStyle'))throw Error('caption style sent to export');
+""")
+c.evaluateScript("""
+// Background music: import or ElevenLabs, sent to the export with volume and ducking.
+let musicToasts=[];toast=function(m){musicToasts.push(m)};confirm=function(){return true};sent=[];
+const musicP={id:'music',title:'Điện Biên Phủ',format:'short',scenes:[],guide:{brief:{},steps:{}}};state.projects=[musicP];selected='music';
+if(musicExportOptions(musicP)!==undefined||!musicPanel(musicP,58).includes('Soạn nhạc bằng ElevenLabs')||!defaultMusicPrompt(musicP).includes('Điện Biên Phủ'))throw Error('no music yet');
+importMusic();if(sent.at(-1).action!=='asset'||sent.at(-1).body.request.kind!=='music')throw Error('import asks for a music file');
+window.nativeAsset({request:{kind:'music',project:'music',music:true},path:'/a/m.mp3',name:'trong-tran.mp3',duration:95});
+if(musicP.music?.path!=='/a/m.mp3'||JSON.stringify(musicExportOptions(musicP))!==JSON.stringify({path:'/a/m.mp3',volume:0.25,duck:true}))throw Error('imported music exported with defaults');
+setMusic('volume',0.4);setMusic('duck',false);if(musicExportOptions(musicP).volume!==0.4||musicExportOptions(musicP).duck!==false||!musicPanel(musicP,58).includes('40%'))throw Error('music settings');
+ttsPending=null;generateMusic(58);const req=sent.at(-1);if(req.action!=='tts'||req.body.kind!=='music'||req.body.seconds!==58||!musicPending)throw Error('compose request');
+if(!musicPanel(musicP,58).includes('disabled'))throw Error('busy while composing');
+window.nativeTTS({requestId:req.body.requestId,status:'running',message:'ElevenLabs đang soạn nhạc nền'});if(!musicPanel(musicP,58).includes('đang soạn'))throw Error('progress shown');
+window.nativeTTS({requestId:req.body.requestId,status:'completed',path:'/a/e-music.mp3'});if(musicPending||musicP.music.path!=='/a/e-music.mp3'||musicP.music.volume!==0.4||musicP.music.source!=='elevenlabs')throw Error('composed music replaces, keeps settings');
+generateMusic(2);if(sent.at(-1).body.seconds!==10)throw Error('at least 10 s');window.nativeTTS({requestId:sent.at(-1).body.requestId,status:'error',message:'Gói không hỗ trợ Music'});if(musicP.music.path!=='/a/e-music.mp3'||musicToasts.at(-1)!=='Gói không hỗ trợ Music')throw Error('error keeps current music');
+if(!String(timelineRequest).includes('music:musicExportOptions(p)'))throw Error('music sent to export');
+removeMusic();if(musicP.music||musicExportOptions(musicP)!==undefined)throw Error('remove music');
+""")
+c.evaluateScript("""
+// Ảnh động: free local clips from a scene image, single and batch, saved as the scene's selected clip.
+sent=[];let motionToasts=[];toast=function(m){motionToasts.push(m)};confirm=function(){return true};
+const motionP={id:'mot',title:'M',format:'short',scenes:[{id:'m1',time:'0:00–0:06',chapter:'A',approvals:{video:true},assets:{image:[{id:'i1',path:'/a/i1.png',selected:true}]}},{id:'m2',time:'0:06–0:10',chapter:'B',approvals:{},assets:{image:[{id:'i2',path:'/a/i2.png',selected:true}]}},{id:'m3',time:'0:10–0:14',chapter:'C',approvals:{},assets:{}}],timelineEntries:[{id:'e1',sceneId:'m1',duration:7.25}],guide:{brief:{},steps:{}}};
+state.projects=[motionP];selected='mot';motionPending=null;
+if(motionSeconds(motionP,motionP.scenes[0])!==7.3||motionSeconds(motionP,motionP.scenes[1])!==4)throw Error('length follows the fitted timeline, else the scene time');
+if(!motionStillView(motionP,motionP.scenes[2]).includes('Cần chọn ảnh')||!motionStillView(motionP,motionP.scenes[0]).includes('Tạo ảnh động · 7.3 giây'))throw Error('scene view');
+setSceneMotion('m1','overlay','embers');setSceneMotion('m1','move','push');if(motionChoice(motionP,motionP.scenes[1]).overlay!=='embers')throw Error('last choice becomes the project default');
+generateMotionStill('m1');let mreq=sent.at(-1);if(mreq.action!=='motionStill'||mreq.body.imagePath!=='/a/i1.png'||mreq.body.move!=='push'||mreq.body.overlay!=='embers'||mreq.body.aspectRatio!=='9:16'||mreq.body.seconds!==7.3)throw Error('render request');
+generateMotionStill('m2');if(sent.at(-1)!==mreq||!motionToasts.at(-1).includes('Đang tạo'))throw Error('one at a time');
+window.nativeMotionStill({requestId:mreq.body.requestId,status:'running',progress:0.5,message:'Đang dựng ảnh động… 50%'});if(motionPending.progress!==0.5)throw Error('progress');
+window.nativeMotionStill({requestId:mreq.body.requestId,status:'completed',path:'/a/m1-motion.mp4',name:'m1-motion.mp4',duration:7.3});
+const clip=selectedSceneAsset(motionP.scenes[0],'video');if(motionPending||clip?.provider!=='motion'||clip.motion.overlay!=='embers'||motionP.scenes[0].approvals.video)throw Error('clip saved, selected and needs approval again');
+if(motionMissingScenes(motionP).map(s=>s.id).join()!=='m2'||!motionBatchView(motionP).includes('Ảnh động cho 1 cảnh'))throw Error('missing scenes have an image and no clip');
+startMotionBatch();mreq=sent.at(-1);if(mreq.body.imagePath!=='/a/i2.png'||!motionP.motionBatch)throw Error('batch starts');
+window.nativeMotionStill({requestId:mreq.body.requestId,status:'completed',path:'/a/m2-motion.mp4',duration:4});if(motionP.motionBatch||!motionToasts.at(-1).includes('1 cảnh'))throw Error('batch finishes');
+motionP.scenes[1].assets.video=[];generateMotionStill('m2');mreq=sent.at(-1);stopMotion();if(sent.at(-1).action!=='motionStillCancel')throw Error('stop');
+window.nativeMotionStill({requestId:mreq.body.requestId,status:'error',message:'Đã dừng tạo ảnh động.'});if(motionPending||motionToasts.at(-1)!=='Đã dừng tạo ảnh động.')throw Error('stopped');
+""")
+c.evaluateScript("""
+// Credit estimates from PlenX pricing: per generation or per second, silent price preferred.
+const flash={id:'omni-flash-video',servers:[{slug:'cheap',is_default:true,pricing:[{quality:'720p',cost_type:'per_second',credit_cost:1},{quality:'1080p',cost_type:'per_second',credit_cost:2}]},{slug:'vip',pricing:[{quality:'720p',cost_type:'per_second',credit_cost:5}]}]};
+const kling={id:'kling',servers:[{slug:'b',pricing:[{quality:'720p',include_audio:true,cost_type:'per_second',credit_cost:20},{quality:'720p',cost_type:'per_second',credit_cost:13}]}]};
+const banana={id:'nb',resolutions:['1k','2k'],servers:[{is_default:true,pricing:[{quality:'1k',cost_type:'per_gen',credit_cost:2},{quality:'2k',cost_type:'per_gen',credit_cost:3}]}]};
+if(plenxPrice(flash,'720p',5)!==5||plenxPrice(flash,'1080P',6)!==12||plenxPrice(kling,'720p',5)!==65||plenxPrice(banana,'1k',0)!==2||plenxPrice(banana,'4k',0)!==null||plenxPrice(null,'720p',5)!==null)throw Error('prices');
+if(creditText(9,5)!=='Ước tính khoảng 45 credit PlenX (9 × 5).'||creditText(0,5)!==''||!creditText(3,null).includes('Chưa đọc được giá'))throw Error('credit text');
+plenxVideoModels=[{...flash,modes:['i2v'],qualities:['720p'],durations:[5],aspect_ratios:['16:9','9:16'],endpoint:'/developer/generate/video-omni',endpoints:['/developer/generate/video-omni']}];
+const costP={id:'cost',title:'C',format:'short',scenes:[{id:'c1',approvals:{},assets:{}},{id:'c2',approvals:{},assets:{video:[{id:'v',path:'/a/v.mp4',selected:true}]}}],videoSettings:{model:'omni-flash-video',duration:5,quality:'720p'},guide:{brief:{},steps:{}}};state.projects=[costP];selected='cost';
+const vc=videoBatchCost(costP);if(vc.count!==1||vc.each!==5||!videoCostHint(costP).includes('5 credit')||!videoCostHint(costP).includes('0 credit'))throw Error('video estimate');
+if(!String(startVideoBatch).includes('creditText(')||!String(startImageBatch).includes('creditText('))throw Error('confirms show the estimate');
+""")
+c.evaluateScript("""
+// Remotion map scenes: install status and buttons, AI plan, preview and rendered clip.
+sent=[];let mapToasts=[];toast=function(m){mapToasts.push(m)};confirm=function(){return true};remotionState={status:null,requested:false,busy:false,message:''};mapPending=null;
+if(!remotionPanel().includes('Đang kiểm tra'))throw Error('status pending');
+window.nativeRemotion({status:'status',node:{ok:false},packages:{ok:false},browser:{ok:false},ready:false});
+if(!remotionPanel().includes('Cài Node.js')||remotionPanel().includes('Cài Remotion')||!remotionPanel().includes('tối đa 3 người'))throw Error('node missing');
+installRemotion('node');if(sent.at(-1).action!=='remotionInstallNode'||!remotionState.busy||!remotionPanel().includes('Dừng'))throw Error('install node');
+window.nativeRemotion({status:'progress',phase:'node',progress:0.5,message:'Đang tải Node.js… 50%'});if(remotionState.message!=='Đang tải Node.js… 50%')throw Error('progress');
+window.nativeRemotion({status:'installed',message:'Đã cài Node.js',node:{ok:true,version:'v24.22.2',portable:true},packages:{ok:false},browser:{ok:false},ready:false});
+if(remotionState.busy||!remotionPanel().includes('Cài Remotion')||!remotionPanel().includes('v24.22.2'))throw Error('node installed');
+installRemotion('packages');if(sent.at(-1).action!=='remotionInstall')throw Error('install packages');
+window.nativeRemotion({status:'installed',message:'Remotion đã sẵn sàng.',node:{ok:true,version:'v24.22.2'},packages:{ok:true,version:'4.0.539'},browser:{ok:true},ready:true});if(!remotionReady()||remotionPanel().includes('Cài Remotion'))throw Error('ready');
+const mapP={id:'map',title:'Điện Biên Phủ',format:'short',scenes:[{id:'s1',time:'0:00–0:08',chapter:'Vây hãm',voice:'Quân ta từ Tuần Giáo tiến về Điện Biên Phủ.',approvals:{video:true},assets:{}}],guide:{brief:{},steps:{}}};state.projects=[mapP];selected='map';
+const ms=mapP.scenes[0];if(!mapSceneView(mapP,ms).includes('Dựng cảnh bản đồ · 8 giây'))throw Error('map view');
+if(!mapSceneView(mapP,ms).includes('AI dựng bản đồ từ lời kể'))throw Error('no prompt: from narration');setMapPrompt('s1','Trận Bạch Đằng năm 938, thuyền Nam Hán vào sông');if(!mapSceneView(mapP,ms).includes('AI dựng bản đồ từ mô tả'))throw Error('prompt button');
+requestMapPlan('s1');const mapAsk=sent.at(-1);if(mapAsk.body.stage!=='map_plan'||mapAsk.body.context.seconds!==8||!mapAsk.body.context.prompt.includes('Bạch Đằng')||mapAsk.body.context.aspectRatio!=='9:16'||!mapAsk.body.context.voice.includes('Tuần Giáo'))throw Error('AI request carries the prompt');
+window.nativeAssistant({stage:'map_plan',projectId:'map',requestId:mapAsk.body.requestId,status:'completed',result:{document:'```json\\n{"start":{"center":[103.3,21.5],"zoom":8},"places":[{"name":"Tuần Giáo","at":[103.42,21.59]}]}\\n```',message:'Bản đồ vây hãm'}});
+if(!parseMapPlan(ms.mapPlan.json)||ms.mapPlan.ai.status!=='completed'||!ms.mapPlan.json.includes('Tuần Giáo'))throw Error('plan saved as JSON');if(!ms.mapPlan.ai.message.includes('chưa có mũi tên')||!mapSceneView(mapP,ms).includes('clip sẽ chỉ có nền bản đồ'))throw Error('empty plan warned');if(mapPlanEmpty({start:{center:[1,2]},moves:[{path:[[1,2],[3,4]]}]})||mapPlanEmpty(null))throw Error('plans with moves are fine');
+setMapPlanText('s1','{bad');if(!mapSceneView(mapP,ms).includes('JSON chưa hợp lệ'))throw Error('invalid JSON flagged');renderMapScene('s1',true);if(!mapToasts.at(-1).includes('chưa phải JSON'))throw Error('render blocked');
+setMapPlanText('s1','{"start":{"center":[103.3,21.5],"zoom":8}}');renderMapScene('s1',true);let rr=sent.at(-1);if(rr.action!=='remotionRender'||!rr.body.still||rr.body.aspectRatio!=='9:16'||rr.body.seconds!==8)throw Error('preview request');
+window.nativeRemotion({status:'progress',phase:'bundle',message:'Đang chuẩn bị'});if(mapPending.message!=='Đang chuẩn bị')throw Error('render progress goes to the scene');
+window.nativeRemotion({status:'completed',requestId:rr.body.requestId,path:'/a/x-mappreview.png'});if(ms.mapPlan.preview!=='/a/x-mappreview.png'||!mapSceneView(mapP,ms).includes('studio-image://asset/x-mappreview.png'))throw Error('preview shown');
+renderMapScene('s1',false);rr=sent.at(-1);window.nativeRemotion({status:'completed',requestId:rr.body.requestId,path:'/a/x-map.mp4',name:'x-map.mp4',duration:8});
+const mc=selectedSceneAsset(ms,'video');if(mc?.provider!=='remotion-map'||ms.approvals.video||!mc.mapPlan.includes('103.3'))throw Error('map clip saved and needs approval');
+renderMapScene('s1',false);rr=sent.at(-1);window.nativeRemotion({status:'error',requestId:rr.body.requestId,message:'Chưa dựng được'});if(mapPending||mapToasts.at(-1)!=='Chưa dựng được')throw Error('render error');
+""")
+print("UI scripts parse; Remotion map scenes, credit estimates, motion stills, background music, karaoke caption option, stickman styles, sleep/wake recovery, Blender stage, changelog, backup and restore, Short format, framing, captions, short cuts and series, dashboard, overview, TTS, references, settings, escaping and workflow gate passed")

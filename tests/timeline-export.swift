@@ -111,6 +111,58 @@ let noCaption=NSBitmapImageRep(cgImage:try g.copyCGImage(at:CMTime(seconds:2.5,p
 var whiteLater=false
 for y in stride(from:1280,through:1410,by:4) { for x in stride(from:150,through:930,by:3) { let c=noCaption.colorAt(x:x,y:y)!.usingColorSpace(.deviceRGB)!; if c.redComponent>0.85 && c.greenComponent>0.85 && c.blueComponent>0.85 { whiteLater=true } } }
 assert(!whiteLater,"entries without captionText show no caption")
+// Word captions from ElevenLabs timings: chunks follow the real speech and highlight the spoken word.
+let spoken=[TimedWord(text:"Năm",start:0.1,end:0.3),TimedWord(text:"938,",start:0.35,end:0.7),TimedWord(text:"Ngô",start:0.8,end:1.0),TimedWord(text:"Quyền",start:1.05,end:1.3),TimedWord(text:"thắng.",start:1.35,end:1.7),TimedWord(text:"Hết",start:3.0,end:3.3)]
+let karaoke=FrameStyle.wordCaptions(spoken,offset:10,limit:3.6,maxWords:4,karaoke:true)
+assert(karaoke.first!.text=="Năm 938," && abs(karaoke.first!.start-10.1)<0.001 && karaoke.first!.highlight==0,"\(karaoke.map{$0.text})")
+assert(karaoke.contains { $0.text=="Ngô Quyền thắng." && $0.highlight==1 && abs($0.start-11.05)<0.001 },"chunk breaks after punctuation; highlight follows the word")
+assert(zip(karaoke,karaoke.dropFirst()).allSatisfy { $0.end<=$1.start+0.0001 },"no overlapping captions")
+let pause=karaoke.first { $0.text=="Ngô Quyền thắng." && $0.highlight==2 }!;assert(abs(pause.end-(11.7+0.35))<0.001,"a long pause ends the caption shortly after the last word")
+assert(karaoke.last!.text=="Hết" && abs(karaoke.last!.end-13.6)<0.001,"captions never run past the voice")
+let phrase=FrameStyle.wordCaptions(spoken,offset:0,limit:3.6,maxWords:4,karaoke:false);assert(phrase.count==3 && phrase.allSatisfy { $0.highlight==nil })
+assert(FrameStyle.wordCaptions(spoken,offset:0,limit:1.0,maxWords:4,karaoke:false).flatMap(\.words)==["Năm","938,","Ngô"],"words after the voice ends are dropped")
+assert(StudioCompositor.wordRange(TimedCaption(start:0,end:1,text:"Ngô Quyền thắng.",words:["Ngô","Quyền","thắng."],highlight:1))==NSRange(location:4,length:5))
+assert(StudioCompositor.wordRange(TimedCaption(start:0,end:1,text:"x",words:["x"],highlight:3))==nil)
+let timedVoice=folder.appendingPathComponent("timed-voice.wav").path;try? FileManager.default.removeItem(atPath:timedVoice);try FileManager.default.copyItem(atPath:voice,toPath:timedVoice)
+try JSONSerialization.data(withJSONObject:["version":1,"words":[["text":"Xin","start":0.05,"end":0.9],["text":"chào","start":0.95,"end":1.4]]]).write(to:URL(fileURLWithPath:timedVoice+".words.json"))
+assert(FrameStyle.loadWords(audioPath:timedVoice).map(\.text)==["Xin","chào"] && FrameStyle.loadWords(audioPath:voice).isEmpty)
+try JSONSerialization.data(withJSONObject:["words":[["text":"b","start":2,"end":3],["text":"a","start":1,"end":2]]]).write(to:URL(fileURLWithPath:folder.appendingPathComponent("bad.wav").path+".words.json"));assert(FrameStyle.loadWords(audioPath:folder.appendingPathComponent("bad.wav").path).isEmpty,"out-of-order timings are ignored")
+var timedEntries=entries;timedEntries[0]["audioPath"]=timedVoice;timedEntries[0]["captionText"]="Không dùng câu này"
+let timedAsset=try exportShort(timedEntries,["format":"short"],"short-words.mp4")
+let tg=AVAssetImageGenerator(asset:timedAsset);tg.appliesPreferredTrackTransform=true;tg.requestedTimeToleranceBefore = .zero;tg.requestedTimeToleranceAfter = .zero
+let wordFrame=NSBitmapImageRep(cgImage:try tg.copyCGImage(at:CMTime(seconds:0.5,preferredTimescale:600),actualTime:nil))
+var yellow=false
+for y in stride(from:1280,through:1410,by:3) { for x in stride(from:150,through:930,by:3) { let c=wordFrame.colorAt(x:x,y:y)!.usingColorSpace(.deviceRGB)!; if c.redComponent>0.85 && c.greenComponent>0.7 && c.blueComponent<0.35 { yellow=true } } }
+assert(yellow,"the spoken word is highlighted in the burned-in caption")
+// Background music: looped to the end, ducked under narration, faded in and out.
+let points=StudioTimeline.musicVolumePoints(total:10,voices:[(2,4),(4.3,5),(8,8.5)],base:0.4)
+func vol(_ x:Double)->Double { points.first { abs($0.0-x)<0.0001 }!.1 }
+assert(vol(0)==0 && abs(vol(1)-0.4)<0.0001,"fade in")
+assert(abs(vol(2)-0.12)<0.0001 && abs(vol(5)-0.12)<0.0001,"ducked to 30% across narration closer than 0.6 s")
+assert(!points.contains { $0.0>4 && $0.0<4.3 && $0.1>0.13 },"no swell in a short gap")
+assert(abs(vol(5.4)-0.4)<0.0001 && abs(vol(1.7)-0.4)<0.0001,"back to full between narrations")
+assert(vol(10)==0 && zip(points,points.dropFirst()).allSatisfy { $0.0<$1.0 },"fade out, increasing times")
+assert(StudioTimeline.musicVolumePoints(total:0,voices:[],base:0.4).isEmpty)
+let (musicComp,_,musicMix,musicDuration)=try timeline.compose(entries,options:["music":["path":voice,"volume":0.4]])
+let musicTrack=musicComp.tracks(withMediaType:.audio).last!
+assert(musicMix.inputParameters.count==3 && abs(musicTrack.timeRange.duration.seconds-musicDuration)<0.05,"music track covers the whole timeline")
+let (_,_,quietMix,_)=try timeline.compose(entries,options:["music":["path":voice,"volume":0]]);assert(quietMix.inputParameters.count==2,"volume 0 adds no track")
+do { _=try timeline.compose(entries,options:["music":["path":"/tmp/elsewhere.mp3"]]);fatalError("music outside the assets folder accepted") } catch {}
+let musicAsset=try exportShort(entries,["format":"short","music":["path":voice,"volume":0.3,"duck":true]],"music.mp4")
+assert(!musicAsset.tracks(withMediaType:.audio).isEmpty && abs(musicAsset.duration.seconds-4)<0.1,"export with music")
+// Post-export self-check: a good file passes; wrong length, missing sound and black frames are reported.
+let musicFile=testRoot.appendingPathComponent("music.mp4")
+let clean=ExportCheck.inspect(musicFile,expected:musicAsset.duration.seconds,size:CGSize(width:1080,height:1920),sound:true)
+assert(clean.isEmpty,"good export passes: \(clean)")
+assert(ExportCheck.inspect(musicFile,expected:9,size:CGSize(width:1080,height:1920),sound:true).contains { $0.contains("Thời lượng") },"length mismatch reported")
+assert(ExportCheck.inspect(musicFile,expected:musicAsset.duration.seconds,size:CGSize(width:1920,height:1080),sound:true).contains { $0.contains("Khung hình") },"size mismatch reported")
+let silentClip=folder.appendingPathComponent("red.mp4")
+assert(ExportCheck.inspect(silentClip,expected:AVURLAsset(url:silentClip).duration.seconds,size:AVURLAsset(url:silentClip).tracks(withMediaType:.video)[0].naturalSize,sound:true).contains { $0.contains("âm thanh") || $0.contains("không có tiếng") },"no audio reported")
+let darkCtx=CGContext(data:nil,width:8,height:8,bitsPerComponent:8,bytesPerRow:32,space:CGColorSpaceCreateDeviceRGB(),bitmapInfo:CGImageAlphaInfo.premultipliedLast.rawValue)!
+darkCtx.setFillColor(CGColor(gray:0,alpha:1));darkCtx.fill(CGRect(x:0,y:0,width:8,height:8))
+assert(ExportCheck.meanLuma(darkCtx.makeImage()!)<0.01)
+darkCtx.setFillColor(CGColor(red:1,green:0,blue:0,alpha:1));darkCtx.fill(CGRect(x:0,y:0,width:8,height:8));assert(ExportCheck.meanLuma(darkCtx.makeImage()!)>0.15,"red is not black")
+assert(ExportCheck.clock(65.4)=="1:05" && ExportCheck.clock(.nan)=="?")
 let cropAsset=try exportShort([entries[0]],["format":"short","fill":"crop","captions":false],"crop.mp4")
 let corner=try pixel(cropAsset,0.5,40,60);assert(corner.redComponent>0.7 && corner.blueComponent<0.3,"crop fills the whole frame")
 // Plain 16:9 stays on the built-in layer path.
@@ -123,4 +175,4 @@ let lateAssets=lateRoot.appendingPathComponent("assets");try FileManager.default
 try FileManager.default.copyItem(at:folder.appendingPathComponent("red.mp4"),to:lateAssets.appendingPathComponent("late.mp4"))
 let (_,_,_,lateDuration)=try lateTimeline.compose([["id":"late","path":lateAssets.appendingPathComponent("late.mp4").path,"duration":1.0]])
 precondition(abs(lateDuration-1)<0.05,"files in an assets folder created after start are found")
-print("Timeline export passed: assets folder created after start, MP4 1080p, Short 1080x1920 with blurred fill, crop and burned-in captions, 4 seconds, red/portrait-blue frames, narration, trim, retiming, narration across cover visuals and invalid input guards")
+print("Timeline export passed: post-export self-check, looped and ducked background music, word-timed karaoke captions, assets folder created after start, MP4 1080p, Short 1080x1920 with blurred fill, crop and burned-in captions, 4 seconds, red/portrait-blue frames, narration, trim, retiming, narration across cover visuals and invalid input guards")

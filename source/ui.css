@@ -153,3 +153,15 @@ label>input[type=checkbox],label>input[type=radio]{width:auto;margin:0;accent-co
 .blender-context summary { cursor: pointer; }
 .blender-context-text { min-height: 200px; margin-top: 8px; }
 .blender-context .row label { display: inline-flex; gap: 6px; align-items: center; font-size: 14px; }
+
+.music-panel{border:1px solid var(--line,#dcdcd2);border-radius:12px;padding:12px 14px;margin:10px 0;display:grid;gap:8px}
+.music-panel textarea{min-height:64px}
+.music-panel input[type=range]{vertical-align:middle;width:140px}
+.motion-still{border:1px dashed var(--line,#dcdcd2);border-radius:10px;padding:10px 12px;margin:12px 0;display:grid;gap:6px;background:#fafbf5}
+.motion-still label{font-size:12px}
+.map-scene{border:1px dashed var(--line,#dcdcd2);border-radius:10px;padding:10px 12px;margin:12px 0;background:#f8f6ef}
+.map-scene>summary{font-size:13px}
+.map-scene textarea.map-json{min-height:180px;font-family:ui-monospace,Menlo,monospace;font-size:12px}
+.map-preview{display:block;width:100%;max-width:640px;margin-top:10px;border-radius:8px;border:1px solid var(--line,#dcdcd2)}
+.remotion-row{align-items:center;margin:6px 0}
+.map-scene textarea.map-prompt{min-height:96px}

@@ -56,6 +56,11 @@ enum ProjectBackup {
             guard let values = try? source.resourceValues(forKeys: [.isRegularFileKey, .fileSizeKey]), values.isRegularFile == true else { continue }
             try fm.copyItem(at: source, to: media.appendingPathComponent(name))
             files += 1; bytes += Int64(values.fileSize ?? 0)
+            // Word timings for karaoke captions travel with their narration.
+            let words = assets.appendingPathComponent(name + ".words.json")
+            if let extra = try? words.resourceValues(forKeys: [.isRegularFileKey, .fileSizeKey]), extra.isRegularFile == true {
+                try fm.copyItem(at: words, to: media.appendingPathComponent(words.lastPathComponent)); bytes += Int64(extra.fileSize ?? 0)
+            }
         }
         let manifest: [String: Any] = ["app": appName, "format": format, "version": appVersion, "created": ISO8601DateFormatter().string(from: Date()),
                                        "assetsRoot": assets.path, "projects": projects.count, "files": files]

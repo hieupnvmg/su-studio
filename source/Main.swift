@@ -41,8 +41,12 @@ final class Studio: NSObject, NSApplicationDelegate, WKScriptMessageHandler, WKU
     let credentials = CredentialStore()
     private var credentialRevisions: [String: Int] = [:]
     private var stagedRestore: (token: String, staged: ProjectBackup.Staged)?
+    /// One "ảnh động" render at a time; the flag is read from the render thread to stop early.
+    private var motionRequest: String?
+    private var motionCancelled = false
     lazy var blender: BlenderRender = { let b = BlenderRender(root: root); b.onUpdate = { [weak self] update in self?.reply(update, "nativeBlender") }; return b }()
     let root = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0].appendingPathComponent("HistoryStudio", isDirectory: true)
+    lazy var remotion: RemotionMaps = { let r = RemotionMaps(root: root); r.onUpdate = { [weak self] update in self?.reply(update, "nativeRemotion") }; return r }()
     func applicationDidFinishLaunching(_ notification: Notification) {
         if let iconURL = Bundle.main.url(forResource: "AppIcon", withExtension: "icns"), let icon = NSImage(contentsOf: iconURL) { NSApp.applicationIconImage = icon }
         try? FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
@@ -133,6 +137,49 @@ final class Studio: NSObject, NSApplicationDelegate, WKScriptMessageHandler, WKU
     func reply(_ value: Any, _ function: String = "nativeResult") {
         guard let data = try? JSONSerialization.data(withJSONObject: value, options: [.fragmentsAllowed]), let json = String(data: data, encoding: .utf8) else { return }
         web.evaluateJavaScript("window.\(function)(\(json))", completionHandler: nil)
+    }
+    /// Renders a map scene (or one preview frame) from a sanitized plan into the project's assets folder.
+    func remotionRender(_ body: [String: Any]) {
+        let requestId = body["requestId"] as? String ?? "", still = body["still"] as? Bool == true
+        func send(_ value: [String: Any]) { var r = value; r["requestId"] = requestId; r["still"] = still; reply(r, "nativeRemotion") }
+        guard let plan = body["plan"] as? [String: Any], let seconds = (body["seconds"] as? NSNumber)?.doubleValue,
+              let props = RemotionMaps.sanitize(plan, aspect: body["aspectRatio"] as? String ?? "16:9", seconds: seconds) else {
+            send(["status": "error", "message": "Kịch bản bản đồ thiếu góc nhìn (start: center [kinh độ, vĩ độ] và zoom 2–14) hoặc thời lượng ngoài 2–60 giây."]); return
+        }
+        let assets = root.appendingPathComponent("assets", isDirectory: true)
+        try? FileManager.default.createDirectory(at: assets, withIntermediateDirectories: true)
+        let output = assets.appendingPathComponent(UUID().uuidString + (still ? "-mappreview.png" : "-map.mp4"))
+        let frame = Int(((body["frame"] as? NSNumber)?.doubleValue ?? seconds * 0.7) * 30)
+        remotion.render(props: props, output: output, still: still, frame: frame) { [weak self] error in
+            guard self != nil else { return }
+            if let error = error { send(["status": "error", "message": error.localizedDescription]) }
+            else { send(["status": "completed", "path": output.path, "name": output.lastPathComponent, "duration": seconds, "props": props]) }
+        }
+    }
+    /// Turns a scene image from the project's assets into a moving clip (camera move and overlay) on this Mac.
+    func motionStill(_ body: [String: Any]) {
+        let requestId = body["requestId"] as? String ?? ""
+        func send(_ value: [String: Any]) { var r = value; r["requestId"] = requestId; reply(r, "nativeMotionStill") }
+        guard motionRequest == nil else { send(["status": "error", "message": "Đang tạo một ảnh động khác. Đợi xong hoặc dừng trước."]); return }
+        let assets = root.appendingPathComponent("assets", isDirectory: true).standardizedFileURL.resolvingSymlinksInPath()
+        guard let raw = body["imagePath"] as? String, let options = MotionStill.options(body) else { send(["status": "error", "message": "Thiếu ảnh hoặc tuỳ chọn ảnh động chưa hợp lệ (dài 2–60 giây)."]); return }
+        let image = URL(fileURLWithPath: raw).standardizedFileURL.resolvingSymlinksInPath()
+        guard image.deletingLastPathComponent().path == assets.path, FileManager.default.fileExists(atPath: image.path) else { send(["status": "error", "message": "Không tìm thấy ảnh của cảnh trong thư mục dự án."]); return }
+        let output = assets.appendingPathComponent(UUID().uuidString + "-motion.mp4")
+        motionRequest = requestId; motionCancelled = false
+        send(["status": "running", "progress": 0, "message": "Đang dựng ảnh động…"])
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            var last = -1.0
+            do {
+                try MotionStill.render(image: image, to: output, options: options, progress: { value in
+                    guard value - last >= 0.05 || value == 1 else { return }; last = value
+                    DispatchQueue.main.async { send(["status": "running", "progress": value, "message": "Đang dựng ảnh động… \(Int(value * 100))%"]) }
+                }, cancelled: { self?.motionCancelled ?? true })
+                DispatchQueue.main.async { self?.motionRequest = nil; send(["status": "completed", "path": output.path, "name": output.lastPathComponent, "duration": options.seconds, "message": "Đã tạo ảnh động. Xem thử rồi duyệt clip."]) }
+            } catch {
+                DispatchQueue.main.async { self?.motionRequest = nil; send(["status": "error", "message": error.localizedDescription]) }
+            }
+        }
     }
     func editText(_ body: [String: Any]) {
         guard let requestID = body["requestId"] as? String, let text = body["text"] as? String else { return }
@@ -274,6 +321,13 @@ final class Studio: NSObject, NSApplicationDelegate, WKScriptMessageHandler, WKU
                 result["requestId"] = requestID
                 await MainActor.run { [weak self, result] in self?.reply(result, "nativeArchiveMedia") }
             }
+        case "remotionStatus": reply(remotion.status(), "nativeRemotion")
+        case "remotionInstallNode": remotion.installNode()
+        case "remotionInstall": remotion.installPackages()
+        case "remotionCancel": remotion.cancel()
+        case "remotionRender": remotionRender(body)
+        case "motionStill": motionStill(body)
+        case "motionStillCancel": motionCancelled = true
         case "timeline": timeline.command(body)
         case "timelineImport":
             // Pick one or more videos (or images, turned into still clips) and insert them at `insertAt` in order.
@@ -392,6 +446,10 @@ final class Studio: NSObject, NSApplicationDelegate, WKScriptMessageHandler, WKU
                 if request["kind"] as? String == "image", NSImage(contentsOf: file) == nil {
                     reply(["error": "File đã chọn không phải ảnh đọc được. Hãy chọn PNG, JPEG, WebP hoặc HEIC hợp lệ."]); return
                 }
+                if request["kind"] as? String == "music" {
+                    let music = AVURLAsset(url:file)
+                    guard !music.tracks(withMediaType:.audio).isEmpty,music.duration.seconds.isFinite,music.duration.seconds>=1 else { reply(["error":"File không phải nhạc đọc được. Chọn MP3, M4A, WAV hoặc AAC dài từ 1 giây."]);return }
+                }
                 if request["kind"] as? String == "video" {
                     let video = AVURLAsset(url:file)
                     guard !video.tracks(withMediaType:.video).isEmpty,video.duration.seconds.isFinite,video.duration.seconds>0 else { reply(["error":"File không phải video đọc được."]);return }
@@ -400,7 +458,7 @@ final class Studio: NSObject, NSApplicationDelegate, WKScriptMessageHandler, WKU
                 let dest = folder.appendingPathComponent(UUID().uuidString + "-" + file.lastPathComponent)
                 try FileManager.default.copyItem(at: file, to: dest)
                 var result: [String:Any] = ["request":request,"path":dest.path,"name":file.lastPathComponent]
-                if request["kind"] as? String == "video" { let asset=AVURLAsset(url:dest);if asset.duration.seconds.isFinite { result["duration"]=asset.duration.seconds } }
+                if ["video","music"].contains(request["kind"] as? String ?? "") { let asset=AVURLAsset(url:dest);if asset.duration.seconds.isFinite { result["duration"]=asset.duration.seconds } }
                 reply(result, "nativeAsset")
             } catch { reply(["error": "Không nhập được tài nguyên: \(error.localizedDescription)"]) }
         case "openAsset":

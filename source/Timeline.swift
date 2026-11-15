@@ -173,7 +173,18 @@ final class StudioTimeline: NSObject, NSWindowDelegate {
                         exporter.exportAsynchronously {
                             DispatchQueue.main.async {
                                 self.timer?.invalidate();self.timer=nil;self.exporter=nil
-                                if exporter.status == .completed { self.onUpdate?(["status":"completed","path":output.path,"message":"Đã xuất MP4: \(output.lastPathComponent)"]);NSWorkspace.shared.activateFileViewerSelecting([output]) }
+                                if exporter.status == .completed {
+                                    // Re-read the file before calling it done: size, length, sound and black frames.
+                                    let narrated=entries.contains { !($0["audioPath"] as? String ?? "").isEmpty } || (body["music"] as? [String:Any])?["path"] != nil
+                                    self.onUpdate?(["status":"checking","message":"Đã xuất MP4, đang tự kiểm tra file…"])
+                                    DispatchQueue.global(qos:.userInitiated).async {
+                                        let issues=ExportCheck.inspect(output,expected:duration,size:video.renderSize,sound:narrated)
+                                        DispatchQueue.main.async {
+                                            self.onUpdate?(["status":"completed","path":output.path,"issues":issues,"message":"Đã xuất MP4: \(output.lastPathComponent). "+(issues.isEmpty ? "Tự kiểm tra: đúng kích thước và thời lượng, có tiếng, không có đoạn đen." : "Tự kiểm tra thấy: "+issues.joined(separator:" "))])
+                                            NSWorkspace.shared.activateFileViewerSelecting([output])
+                                        }
+                                    }
+                                }
                                 else { self.onUpdate?(["status":exporter.status == .cancelled ? "cancelled":"error","message":exporter.status == .cancelled ? "Đã hủy xuất.":"Xuất MP4 thất bại. Kiểm tra dung lượng và định dạng clip. \(exporter.error?.localizedDescription ?? "")"]) }
                             }
                         }
@@ -191,11 +202,37 @@ final class StudioTimeline: NSObject, NSWindowDelegate {
         }
     }
     /// Output frame for a request: Short exports 1080×1920; fill is fit (black bars), blur (blurred copy behind) or crop.
-    static func frameOptions(_ options:[String:Any]) -> (short:Bool,fill:String,captions:Bool,size:CGSize) {
+    /// Music volume keyframes (seconds, volume): fade in over 1 s, duck to 30% around each narration
+    /// (closer than 0.6 s apart counts as one), fade out over the last 1.5 s.
+    static func musicVolumePoints(total:Double,voices:[(Double,Double)],base:Double) -> [(Double,Double)] {
+        guard total>0 else { return [] }
+        let duck=base*0.3
+        var merged:[(Double,Double)]=[]
+        for v in voices.filter({ $0.1>$0.0 }).sorted(by:{ $0.0<$1.0 }) {
+            if let last=merged.last,v.0-last.1<0.6 { merged[merged.count-1].1=max(last.1,v.1) } else { merged.append(v) }
+        }
+        func level(_ t:Double)->Double {
+            var v=base
+            for (s,e) in merged {
+                if t>=s && t<=e { v=duck }
+                else if t>s-0.3 && t<s { v=min(v,base-(base-duck)*(t-(s-0.3))/0.3) }
+                else if t>e && t<e+0.4 { v=min(v,duck+(base-duck)*(t-e)/0.4) }
+            }
+            let fadeIn=min(1,total/3),fadeOut=min(1.5,total/3)
+            if t<fadeIn { v*=t/fadeIn }
+            if t>total-fadeOut { v*=max(0,(total-t)/fadeOut) }
+            return v
+        }
+        var times:Set<Double>=[0,total,min(1,total/3),max(0,total-min(1.5,total/3))]
+        for (s,e) in merged { for x in [s-0.3,s,e,e+0.4] where x>0 && x<total { times.insert(x) } }
+        return times.sorted().map { ($0,level($0)) }
+    }
+    /// karaoke: highlight the word being spoken when the narration has word timings (default on).
+    static func frameOptions(_ options:[String:Any]) -> (short:Bool,fill:String,captions:Bool,size:CGSize,karaoke:Bool) {
         let short = options["format"] as? String == "short"
         let requested = options["fill"] as? String ?? ""
         let fill = ["fit","blur","crop"].contains(requested) ? requested : (short ? "blur" : "fit")
-        return (short,fill,options["captions"] as? Bool ?? short,short ? CGSize(width:1080,height:1920) : CGSize(width:1920,height:1080))
+        return (short,fill,options["captions"] as? Bool ?? short,short ? CGSize(width:1080,height:1920) : CGSize(width:1920,height:1080),options["captionStyle"] as? String != "phrase")
     }
     func compose(_ entries:[[String:Any]],options:[String:Any]=[:]) throws -> (AVMutableComposition,AVMutableVideoComposition,AVMutableAudioMix,Double) {
         let composition=AVMutableComposition(),video=AVMutableVideoComposition(),mix=AVMutableAudioMix()
@@ -204,7 +241,7 @@ final class StudioTimeline: NSObject, NSWindowDelegate {
         let custom=frame.short || frame.fill != "fit" || frame.captions
         let style=FrameStyle(size:render,fill:frame.fill)
         var instructions:[AVVideoCompositionInstructionProtocol]=[],audioParameters:[AVAudioMixInputParameters]=[]
-        var cursor=CMTime.zero,voiceEnd=CMTime.zero
+        var cursor=CMTime.zero,voiceEnd=CMTime.zero,voices:[(Double,Double)]=[]
         func seconds(_ n:Double)->CMTime { CMTime(seconds:n,preferredTimescale:600) }
         // A scene's narration may run across consecutive entries sharing a narrationGroup (cover visuals).
         func sameGroup(_ i:Int,_ group:String?)->Bool { group != nil && i<entries.count && entries[i]["narrationGroup"] as? String == group }
@@ -224,8 +261,13 @@ final class StudioTimeline: NSObject, NSWindowDelegate {
             if let path=e["audioPath"] as? String,!path.isEmpty {
                 voiceLength=try asset(path).duration.seconds
                 guard voiceLength.isFinite,voiceLength>0,voiceLength<=span+0.1 else { throw issue(next>index+1 ? "Các hình phủ của clip \(index+1) ngắn hơn lời kể. Bấm Căn theo giọng đọc hoặc tăng thời lượng các hình." : "Clip \(index+1) ngắn hơn lời kể. Bấm Căn theo giọng đọc hoặc tăng thời lượng timeline.") }
-                voiceEnd=CMTimeAdd(cursor,seconds(voiceLength))
-                if frame.captions,let text=e["captionText"] as? String { style.captions+=FrameStyle.captions(text,start:cursor.seconds,duration:voiceLength,maxWords:frame.short ? 6 : 10) }
+                voiceEnd=CMTimeAdd(cursor,seconds(voiceLength));voices.append((cursor.seconds,cursor.seconds+voiceLength))
+                if frame.captions {
+                    // Real word timings saved with the ElevenLabs audio; older audio falls back to weighted chunks.
+                    let timed=FrameStyle.loadWords(audioPath:path)
+                    if !timed.isEmpty { style.captions+=FrameStyle.wordCaptions(timed,offset:cursor.seconds,limit:voiceLength,maxWords:frame.short ? 4 : 8,karaoke:frame.karaoke) }
+                    else if let text=e["captionText"] as? String { style.captions+=FrameStyle.captions(text,start:cursor.seconds,duration:voiceLength,maxWords:frame.short ? 6 : 10) }
+                }
             } else { voiceLength=0 }
             // Round UP to an output frame. Truncating the video time left the last
             // milliseconds of MP3 outside the instructions, invalidating the composition.
@@ -259,6 +301,26 @@ final class StudioTimeline: NSObject, NSWindowDelegate {
             }
             cursor=CMTimeAdd(cursor,slot)
         }
+        // Background music: looped to the end, faded in/out and lowered under the narration.
+        if let music=options["music"] as? [String:Any],let path=music["path"] as? String,!path.isEmpty,cursor.seconds>0 {
+            let source=try asset(path)
+            guard let sound=source.tracks(withMediaType:.audio).first,source.duration.seconds.isFinite,source.duration.seconds>=1 else { throw issue("File nhạc nền không đọc được. Chọn lại file nhạc.") }
+            let total=cursor.seconds,base=min(1,max(0,(music["volume"] as? NSNumber)?.doubleValue ?? 0.25))
+            if base>0,let audio=composition.addMutableTrack(withMediaType:.audio,preferredTrackID:kCMPersistentTrackID_Invalid) {
+                var at=0.0
+                while at<total-0.01 {
+                    let length=min(source.duration.seconds,total-at)
+                    try audio.insertTimeRange(CMTimeRange(start:.zero,duration:seconds(length)),of:sound,at:seconds(at));at+=length
+                }
+                let params=AVMutableAudioMixInputParameters(track:audio)
+                let points=Self.musicVolumePoints(total:total,voices:music["duck"] as? Bool == false ? [] : voices,base:base)
+                params.setVolume(Float(points.first?.1 ?? base),at:.zero)
+                for (a,b) in zip(points,points.dropFirst()) where b.0>a.0 {
+                    params.setVolumeRamp(fromStartVolume:Float(a.1),toEndVolume:Float(b.1),timeRange:CMTimeRange(start:seconds(a.0),end:seconds(b.0)))
+                }
+                audioParameters.append(params)
+            }
+        }
         if custom { video.customVideoCompositorClass=StudioCompositor.self }
         video.renderSize=render;video.frameDuration=CMTime(value:1,timescale:30);video.instructions=instructions;mix.inputParameters=audioParameters
         guard video.isValid(for:composition,timeRange:CMTimeRange(start:.zero,duration:composition.duration),validationDelegate:nil) else { throw issue("Chưa căn được khung hình với lời kể. Hãy căn lại thời lượng trước khi xem thử.") }
@@ -266,9 +328,94 @@ final class StudioTimeline: NSObject, NSWindowDelegate {
     }
 }
 
+// MARK: - Checking an exported file
+
+enum ExportCheck {
+    /// Problems found in an exported MP4 (Vietnamese, ready to show); empty when it looks right.
+    static func inspect(_ url: URL, expected: Double, size: CGSize, sound: Bool) -> [String] {
+        let asset = AVURLAsset(url: url)
+        var issues: [String] = []
+        guard let track = asset.tracks(withMediaType: .video).first else { return ["File không có hình."] }
+        let natural = track.naturalSize.applying(track.preferredTransform)
+        if abs(abs(natural.width) - size.width) > 2 || abs(abs(natural.height) - size.height) > 2 { issues.append("Khung hình \(Int(abs(natural.width)))×\(Int(abs(natural.height))) khác \(Int(size.width))×\(Int(size.height)).") }
+        let length = asset.duration.seconds
+        if !length.isFinite || abs(length - expected) > 0.5 { issues.append("Thời lượng \(clock(length)) khác timeline \(clock(expected)).") }
+        let black = blackRanges(asset, length: length)
+        if !black.isEmpty { issues.append("Đoạn đen: " + black.map { clock($0.0) + "–" + clock($0.1) }.joined(separator: ", ") + ".") }
+        if sound {
+            if let levels = loudness(asset) {
+                if levels.peak < 0.003 { issues.append("Video không có tiếng (lời kể hoặc nhạc bị câm).") }
+                else if let gap = levels.silences.first { issues.append("Im lặng \(Int(gap.1 - gap.0)) giây từ \(clock(gap.0)).") }
+            } else { issues.append("Video không có track âm thanh.") }
+        }
+        return issues
+    }
+    static func clock(_ s: Double) -> String { guard s.isFinite else { return "?" }; let n = Int(s.rounded()); return String(format: "%d:%02d", n / 60, n % 60) }
+
+    /// Spans of at least 1 s whose sampled frames are almost black (first and last half second ignored: fades).
+    static func blackRanges(_ asset: AVAsset, length: Double) -> [(Double, Double)] {
+        guard length.isFinite, length > 1.2 else { return [] }
+        let generator = AVAssetImageGenerator(asset: asset)
+        generator.appliesPreferredTrackTransform = true; generator.maximumSize = CGSize(width: 96, height: 96)
+        generator.requestedTimeToleranceBefore = CMTime(value: 1, timescale: 10); generator.requestedTimeToleranceAfter = CMTime(value: 1, timescale: 10)
+        var ranges: [(Double, Double)] = [], start: Double?
+        var t = 0.5
+        while t < length - 0.5 {
+            var dark = false
+            if let image = try? generator.copyCGImage(at: CMTime(seconds: t, preferredTimescale: 600), actualTime: nil) { dark = meanLuma(image) < 0.04 }
+            if dark { start = start ?? t } else if let s = start { if t - s >= 1 { ranges.append((s, t)) }; start = nil }
+            t += 0.5
+        }
+        if let s = start, length - 0.5 - s >= 1 { ranges.append((s, length - 0.5)) }
+        return ranges
+    }
+    static func meanLuma(_ image: CGImage) -> Double {
+        let w = image.width, h = image.height
+        guard w > 0, h > 0, let ctx = CGContext(data: nil, width: w, height: h, bitsPerComponent: 8, bytesPerRow: w * 4, space: CGColorSpaceCreateDeviceRGB(), bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue) else { return 1 }
+        ctx.draw(image, in: CGRect(x: 0, y: 0, width: w, height: h))
+        guard let data = ctx.data else { return 1 }
+        let p = data.bindMemory(to: UInt8.self, capacity: w * h * 4)
+        var sum = 0.0
+        for i in 0..<(w * h) { sum += 0.2126 * Double(p[i * 4]) + 0.7152 * Double(p[i * 4 + 1]) + 0.0722 * Double(p[i * 4 + 2]) }
+        return sum / Double(w * h) / 255
+    }
+
+    /// Peak level and silent spans (≥ 4 s under about −46 dB) of the first audio track; nil without audio.
+    static func loudness(_ asset: AVAsset) -> (peak: Double, silences: [(Double, Double)])? {
+        guard let track = asset.tracks(withMediaType: .audio).first, let reader = try? AVAssetReader(asset: asset) else { return nil }
+        let output = AVAssetReaderTrackOutput(track: track, outputSettings: [AVFormatIDKey: kAudioFormatLinearPCM, AVLinearPCMBitDepthKey: 16, AVLinearPCMIsFloatKey: false, AVLinearPCMIsBigEndianKey: false, AVLinearPCMIsNonInterleaved: false, AVSampleRateKey: 8000, AVNumberOfChannelsKey: 1])
+        guard reader.canAdd(output) else { return nil }
+        reader.add(output)
+        guard reader.startReading() else { return nil }
+        var peak = 0.0, windowPeak = 0.0, count = 0, window = 0, silences: [(Double, Double)] = [], quietSince: Double?
+        while let buffer = output.copyNextSampleBuffer(), let block = CMSampleBufferGetDataBuffer(buffer) {
+            var length = 0, pointer: UnsafeMutablePointer<Int8>?
+            guard CMBlockBufferGetDataPointer(block, atOffset: 0, lengthAtOffsetOut: nil, totalLengthOut: &length, dataPointerOut: &pointer) == kCMBlockBufferNoErr, let raw = pointer else { continue }
+            raw.withMemoryRebound(to: Int16.self, capacity: length / 2) { samples in
+                for i in 0..<(length / 2) {
+                    let v = abs(Double(samples[i])) / 32768; peak = max(peak, v); windowPeak = max(windowPeak, v); count += 1
+                    if count == 4000 { // half a second at 8 kHz
+                        let at = Double(window) * 0.5
+                        if windowPeak < 0.005 { quietSince = quietSince ?? at } else if let q = quietSince { if at - q >= 4 { silences.append((q, at)) }; quietSince = nil }
+                        window += 1; count = 0; windowPeak = 0
+                    }
+                }
+            }
+        }
+        if let q = quietSince, Double(window) * 0.5 - q >= 4 { silences.append((q, Double(window) * 0.5)) }
+        return (peak, silences)
+    }
+}
+
 // MARK: - Framing and burned-in captions (Short 9:16, blurred fill, subtitles)
 
-struct TimedCaption { let start: Double; let end: Double; let text: String }
+struct TimedCaption {
+    let start: Double; let end: Double; let text: String
+    var words: [String] = []
+    /// Index into `words` drawn in the highlight colour (karaoke captions).
+    var highlight: Int? = nil
+}
+struct TimedWord { let text: String; let start: Double; let end: Double }
 
 final class FrameStyle {
     let size: CGSize
@@ -277,6 +424,51 @@ final class FrameStyle {
     init(size: CGSize, fill: String) { self.size = size; self.fill = fill }
     var vertical: Bool { size.height > size.width }
     func caption(at seconds: Double) -> TimedCaption? { captions.first { seconds >= $0.start && seconds < $0.end } }
+
+    /// Word timings saved beside an ElevenLabs audio file, in seconds from the start of that audio.
+    static func loadWords(audioPath: String) -> [TimedWord] {
+        guard let data = try? Data(contentsOf: URL(fileURLWithPath: audioPath + ".words.json")),
+              let json = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any],
+              let list = json["words"] as? [[String: Any]] else { return [] }
+        let words = list.compactMap { item -> TimedWord? in
+            guard let text = item["text"] as? String, !text.isEmpty, let start = (item["start"] as? NSNumber)?.doubleValue,
+                  let end = (item["end"] as? NSNumber)?.doubleValue, start.isFinite, end.isFinite, start >= 0, end >= start else { return nil }
+            return TimedWord(text: text, start: start, end: end)
+        }
+        return zip(words, words.dropFirst()).allSatisfy({ $0.start <= $1.start }) ? words : []
+    }
+
+    /// Captions from real word timings: short chunks that break after punctuation, shown while they are spoken.
+    /// With karaoke on, each chunk repeats once per word so the spoken word is highlighted.
+    static func wordCaptions(_ words: [TimedWord], offset: Double, limit: Double, maxWords: Int, karaoke: Bool) -> [TimedCaption] {
+        guard !words.isEmpty, maxWords > 0, limit > 0 else { return [] }
+        var chunks: [[TimedWord]] = [], current: [TimedWord] = []
+        for word in words where word.start < limit {
+            current.append(word)
+            let last = word.text.last.map { ".,;:!?…".contains($0) } ?? false
+            if current.count >= maxWords || last && current.count >= 2 || word.text.last.map({ ".!?…".contains($0) }) == true { chunks.append(current); current = [] }
+        }
+        // A lone trailing word joins the previous chunk only when it continues that sentence without a pause.
+        if !current.isEmpty {
+            if current.count == 1, let i = chunks.indices.last, chunks[i].count < maxWords + 1, let prev = chunks[i].last,
+               !(prev.text.last.map { ".!?…".contains($0) } ?? false), current[0].start - prev.end <= 0.8 { chunks[i] += current } else { chunks.append(current) }
+        }
+        var result: [TimedCaption] = []
+        for (n, chunk) in chunks.enumerated() {
+            let begin = chunk[0].start, lastEnd = min(limit, chunk[chunk.count - 1].end)
+            // Hold until the next chunk unless there is a real pause, so captions do not flicker between words.
+            let next = n + 1 < chunks.count ? chunks[n + 1][0].start : nil
+            let finish = min(limit, next.map { $0 - lastEnd <= 0.8 ? $0 : lastEnd + 0.35 } ?? lastEnd + 0.35)
+            let texts = chunk.map(\.text), text = texts.joined(separator: " ")
+            guard finish > begin else { continue }
+            if !karaoke { result.append(TimedCaption(start: offset + begin, end: offset + finish, text: text, words: texts)); continue }
+            for (i, word) in chunk.enumerated() {
+                let from = i == 0 ? begin : max(begin, word.start), to = i + 1 < chunk.count ? max(from, chunk[i + 1].start) : finish
+                if to > from { result.append(TimedCaption(start: offset + from, end: offset + to, text: text, words: texts, highlight: i)) }
+            }
+        }
+        return result
+    }
 
     /// Splits narration into short readable chunks timed by character weight across the voice duration.
     static func captions(_ text: String, start: Double, duration: Double, maxWords: Int) -> [TimedCaption] {
@@ -371,20 +563,22 @@ final class StudioCompositor: NSObject, AVVideoCompositing {
                 }
             }
         }
-        if let caption = style.caption(at: seconds), let text = captionImage(caption.text, style: style) {
+        if let caption = style.caption(at: seconds), let text = captionImage(caption, style: style) {
             let centerY = size.height * (style.vertical ? 0.30 : 0.11)
             canvas = text.transformed(by: CGAffineTransform(translationX: (size.width - text.extent.width) / 2, y: max(0, centerY - text.extent.height / 2))).composited(over: canvas)
         }
         return canvas.cropped(to: canvasRect)
     }
-    private func captionImage(_ text: String, style: FrameStyle) -> CIImage? {
-        if let cached = captionCache[text] { return cached }
+    private func captionImage(_ caption: TimedCaption, style: FrameStyle) -> CIImage? {
+        let text = caption.text, key = text + "#" + (caption.highlight.map(String.init) ?? "-")
+        if let cached = captionCache[key] { return cached }
         let size = style.size, fontSize: CGFloat = style.vertical ? 68 : 52, maxWidth = size.width * (style.vertical ? 0.84 : 0.78), pad: CGFloat = 28
         let paragraph = NSMutableParagraphStyle(); paragraph.alignment = .center; paragraph.lineBreakMode = .byWordWrapping
         let font = NSFont.systemFont(ofSize: fontSize, weight: .heavy)
         let shadow = NSShadow(); shadow.shadowColor = NSColor.black.withAlphaComponent(0.65); shadow.shadowBlurRadius = 14; shadow.shadowOffset = NSSize(width: 0, height: -3)
         let base: [NSAttributedString.Key: Any] = [.font: font, .paragraphStyle: paragraph]
-        let fill = NSAttributedString(string: text, attributes: base.merging([.foregroundColor: NSColor.white]) { $1 })
+        let fill = NSMutableAttributedString(string: text, attributes: base.merging([.foregroundColor: NSColor.white]) { $1 })
+        if let range = Self.wordRange(caption) { fill.addAttribute(.foregroundColor, value: NSColor(calibratedRed: 1, green: 0.84, blue: 0.1, alpha: 1), range: range) }
         let stroke = NSAttributedString(string: text, attributes: base.merging([.foregroundColor: NSColor.black, .strokeColor: NSColor.black, .strokeWidth: 16, .shadow: shadow]) { $1 })
         let bounds = fill.boundingRect(with: NSSize(width: maxWidth, height: size.height), options: [.usesLineFragmentOrigin, .usesFontLeading])
         let width = Int(ceil(maxWidth + pad * 2)), height = Int(ceil(bounds.height + pad * 2))
@@ -398,7 +592,14 @@ final class StudioCompositor: NSObject, AVVideoCompositing {
         guard let made = cg.makeImage() else { return nil }
         let image = CIImage(cgImage: made)
         if captionCache.count > 400 { captionCache.removeAll() }
-        captionCache[text] = image
+        captionCache[key] = image
         return image
+    }
+    /// Range of the highlighted word inside the caption text (words joined by single spaces).
+    static func wordRange(_ caption: TimedCaption) -> NSRange? {
+        guard let index = caption.highlight, caption.words.indices.contains(index) else { return nil }
+        let before = caption.words[..<index].map { ($0 as NSString).length + 1 }.reduce(0, +)
+        let range = NSRange(location: before, length: (caption.words[index] as NSString).length)
+        return NSMaxRange(range) <= (caption.text as NSString).length ? range : nil
     }
 }

@@ -30,4 +30,10 @@ precondition(AssistantPlan.prompt(stage:"blender_script",context:["background":"
 let stick = AssistantPlan.prompt(stage:"storyboard",context:["visualStyle":["key":"stick_history","name":"Người que · Hoạt hình lịch sử","description":"Đầu tròn trắng"]])
 precondition(stick.contains("PHONG CÁCH HÌNH ĐÃ CHỌN: Người que · Hoạt hình lịch sử") && stick.contains("KHÔNG chép lại") && stick.contains("HỒ SƠ NHÂN VẬT"))
 precondition(!AssistantPlan.prompt(stage:"storyboard",context:["visualStyle":"none"]).contains("PHONG CÁCH HÌNH ĐÃ CHỌN") && !long.contains("PHONG CÁCH HÌNH ĐÃ CHỌN"))
-print("Assistant plan passed: stickman style direction, researched scene context, model suggestions, Blender instructions and prose rejection, blender_script stage, Short storyboard profile, 9:16 prompts, script mode, short_cut stage and validation")
+let mapPrompt = AssistantPlan.prompt(stage:"map_plan",context:["voice":"Quân ta vây Điện Biên Phủ","seconds":12])
+precondition(mapPrompt.contains("BẮT BUỘC VẼ DIỄN BIẾN") && mapPrompt.contains("dồn nhịp") && mapPrompt.contains("\"kind\": \"retreat\""))
+precondition(mapPrompt.contains("[kinh độ, vĩ độ]") && mapPrompt.contains("CONTEXT.seconds") && mapPrompt.contains("CONTEXT.prompt") && mapPrompt.contains("9:16") && AssistantPlan.stages.contains("map_plan") && AssistantPlan.baseInstructions(stage:"map_plan").contains("bản đồ"))
+var mapResult = ok; mapResult["document"] = "{\"start\":{\"center\":[103.0,21.4],\"zoom\":8},\"places\":[]}"
+precondition(AssistantPlan.isValid(mapResult,stage:"map_plan"))
+for bad in ["Bản đồ gồm Điện Biên Phủ…", "{\"start\":{\"zoom\":8}}", "{\"start\":{\"center\":[103],\"zoom\":8}}", "[]"] { mapResult["document"] = bad; precondition(!AssistantPlan.isValid(mapResult,stage:"map_plan"), bad) }
+print("Assistant plan passed: map_plan stage, stickman style direction, researched scene context, model suggestions, Blender instructions and prose rejection, blender_script stage, Short storyboard profile, 9:16 prompts, script mode, short_cut stage and validation")

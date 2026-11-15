@@ -29,6 +29,37 @@ final class ElevenLabsTTS: NSObject, URLSessionTaskDelegate {
               Set(inputs.compactMap { $0["voice_id"] }).count <= 10 else { return nil }
         return ["inputs": inputs.map { ["text": $0["text"]!, "voice_id": $0["voice_id"]!] }, "model_id": model, "language_code": "vi"]
     }
+    /// Word timings from ElevenLabs character alignment. Skips the first `skip` characters (an emotion
+    /// direction line) and audio tags in square brackets; each word keeps its first start and last end.
+    static func words(alignment: [String: Any]?, skip: Int = 0) -> [[String: Any]] {
+        guard let chars = alignment?["characters"] as? [String],
+              let starts = (alignment?["character_start_times_seconds"] as? [Any])?.compactMap({ ($0 as? NSNumber)?.doubleValue }),
+              let ends = (alignment?["character_end_times_seconds"] as? [Any])?.compactMap({ ($0 as? NSNumber)?.doubleValue }),
+              chars.count == starts.count, chars.count == ends.count else { return [] }
+        var result: [[String: Any]] = [], text = "", start = 0.0, end = 0.0, depth = 0
+        func flush() {
+            let word = text.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !word.isEmpty, end >= start, start.isFinite, end.isFinite { result.append(["text": word, "start": start, "end": end]) }
+            text = ""
+        }
+        for i in chars.indices where i >= skip {
+            let c = chars[i]
+            if c == "[" { flush(); depth += 1; continue }
+            if c == "]" { depth = max(0, depth - 1); continue }
+            if depth > 0 { continue }
+            if c.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { flush(); continue }
+            if text.isEmpty { start = starts[i] }
+            text += c; end = ends[i]
+        }
+        flush()
+        return result
+    }
+    /// Saves word timings next to the audio file (`<audio>.words.json`); the timeline reads them for word captions.
+    static func saveWords(_ words: [[String: Any]], beside audio: URL) {
+        let file = URL(fileURLWithPath: audio.path + ".words.json")
+        guard !words.isEmpty, let data = try? JSONSerialization.data(withJSONObject: ["version": 1, "words": words]) else { try? FileManager.default.removeItem(at: file); return }
+        try? data.write(to: file, options: .atomic)
+    }
     static func apiError(status: Int, data: Data?, kind: String, model: String?, secrets: [String]) -> String {
         let object = data.flatMap { try? JSONSerialization.jsonObject(with: $0) } as? [String: Any]
         let detail = object?["detail"]
@@ -68,14 +99,22 @@ final class ElevenLabsTTS: NSObject, URLSessionTaskDelegate {
         let kind = body["kind"] as? String ?? ""
         var path = ""
         var payload: [String: Any]?
+        var skip = 0
         if kind == "voices" { path = "/v2/voices?page_size=100&include_total_count=false" }
         else if kind == "models" { path = "/v1/models" }
+        else if kind == "music" {
+            // Instrumental background music (ElevenLabs Music). Plans without music access get ElevenLabs' own error message.
+            guard let prompt = (body["prompt"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines), !prompt.isEmpty, prompt.count <= 2000,
+                  let seconds = (body["seconds"] as? NSNumber)?.intValue, (10...300).contains(seconds) else { fail("Mô tả nhạc từ 1 đến 2.000 ký tự, dài 10–300 giây."); return }
+            path = "/v1/music?output_format=mp3_44100_128"
+            payload = ["prompt": prompt, "music_length_ms": seconds * 1000, "model_id": "music_v1", "force_instrumental": true]
+        }
         else if kind == "generate", let inputs = body["dialogueInputs"] as? [[String: String]] {
             guard let model = body["model"] as? String,
                   let dialogue = Self.dialoguePayload(inputs: inputs, model: model) else {
                 fail("Hội thoại cần Eleven v3/v4, mỗi lượt có lời và Voice ID; tối đa 2.000 ký tự, 10 giọng mỗi cảnh."); return
             }
-            path = "/v1/text-to-dialogue?output_format=mp3_44100_128"
+            path = "/v1/text-to-dialogue/with-timestamps?output_format=mp3_44100_128"
             payload = dialogue
         }
         else if kind == "generate" {
@@ -85,7 +124,7 @@ final class ElevenLabsTTS: NSObject, URLSessionTaskDelegate {
                   let text = body["text"] as? String, !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty, text.count <= 5000 else {
                 fail("Chọn giọng, model và lời đọc từ 1 đến 5.000 ký tự cho một cảnh."); return
             }
-            path = "/v1/text-to-speech/\(voice)?output_format=mp3_44100_128"
+            path = "/v1/text-to-speech/\(voice)/with-timestamps?output_format=mp3_44100_128"
             guard Self.supportsFileSpeech(model) else {
                 fail("Model \(model) dành cho luồng hội thoại/realtime. Hãy tải lại danh sách và chọn model tạo file giọng đọc như Eleven v3 hoặc Flash v2.5 nếu tài khoản hỗ trợ."); return
             }
@@ -96,39 +135,56 @@ final class ElevenLabsTTS: NSObject, URLSessionTaskDelegate {
             let speechText = direction.isEmpty ? taggedText : direction + "\n" + taggedText
             guard speechText.count <= 5000 else { fail("Lời đọc và chỉ dẫn vượt 5.000 ký tự."); return }
             payload = Self.speechPayload(text: speechText, model: model, previous: body["previousText"] as? String, next: body["nextText"] as? String)
+            skip = direction.isEmpty ? 0 : direction.count + 1
         } else { fail("Yêu cầu ElevenLabs không hợp lệ."); return }
-        var request = URLRequest(url: URL(string: "https://api.elevenlabs.io" + path)!)
-        request.httpMethod = payload == nil ? "GET" : "POST"
-        request.setValue(key, forHTTPHeaderField: "xi-api-key")
-        request.setValue(payload == nil ? "application/json" : "audio/mpeg", forHTTPHeaderField: "Accept")
-        if let payload = payload {
-            request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-            request.httpBody = try? JSONSerialization.data(withJSONObject: payload)
+        let timestamped = path.contains("/with-timestamps")
+        func makeRequest(_ path: String) -> URLRequest {
+            var request = URLRequest(url: URL(string: "https://api.elevenlabs.io" + path)!)
+            request.httpMethod = payload == nil ? "GET" : "POST"
+            request.setValue(key, forHTTPHeaderField: "xi-api-key")
+            request.setValue(payload == nil || path.contains("/with-timestamps") ? "application/json" : "audio/mpeg", forHTTPHeaderField: "Accept")
+            if let payload = payload {
+                request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+                request.httpBody = try? JSONSerialization.data(withJSONObject: payload)
+            }
+            return request
         }
         let config = configuration
-        config.timeoutIntervalForRequest = 90; config.timeoutIntervalForResource = 180
+        config.timeoutIntervalForRequest = kind == "music" ? 300 : 90; config.timeoutIntervalForResource = kind == "music" ? 420 : 180
         config.httpShouldSetCookies = false; config.urlCache = nil
         let session = URLSession(configuration: config, delegate: self, delegateQueue: nil)
         self.session = session; active = true
-        onUpdate?(["requestId": requestID, "status": "running", "message": kind == "generate" ? "ElevenLabs đang tạo giọng đọc…" : "Đang lấy danh sách từ ElevenLabs…"])
-        task = session.dataTask(with: request) { [weak self] data, response, error in
+        onUpdate?(["requestId": requestID, "status": "running", "message": kind == "music" ? "ElevenLabs đang soạn nhạc nền… (có thể mất 1–2 phút)" : kind == "generate" ? "ElevenLabs đang tạo giọng đọc…" : "Đang lấy danh sách từ ElevenLabs…"])
+        var handle: ((Data?, URLResponse?, Error?) -> Void)!
+        var fellBack = false
+        handle = { [weak self] data, response, error in
             var result: [String: Any] = ["requestId": requestID, "status": "error"]
             let status = (response as? HTTPURLResponse)?.statusCode ?? 0
+            // An account or region without the timestamps endpoint: ask once more for plain audio (a 404/405 created nothing).
+            if timestamped, !fellBack, error == nil, [404, 405].contains(status), let session = self?.session {
+                fellBack = true
+                self?.task = session.dataTask(with: makeRequest(path.replacingOccurrences(of: "/with-timestamps", with: "")), completionHandler: handle)
+                self?.task?.resume(); return
+            }
             if error != nil {
                 result["message"] = kind == "generate" ? "Kết nối bị gián đoạn. Chưa nhận được audio; yêu cầu có thể đã dùng credit. Kiểm tra lịch sử ElevenLabs trước khi tạo lại." : "Không kết nối được ElevenLabs. Hãy thử lại."
             } else if !(200..<300).contains(status) {
                 result["httpStatus"] = status
                 result["message"] = Self.apiError(status: status, data: data, kind: kind, model: body["model"] as? String, secrets: ((body["dialogueInputs"] as? [[String: String]] ?? []).compactMap { $0["text"] }) + [key, body["text"] as? String ?? "", body["previousText"] as? String ?? "", body["nextText"] as? String ?? ""])
-            } else if kind == "generate" {
-                if let data = data, !data.isEmpty, (response?.mimeType ?? "").hasPrefix("audio/") {
+            } else if kind == "generate" || kind == "music" {
+                let json = data.flatMap { try? JSONSerialization.jsonObject(with: $0) } as? [String: Any]
+                let audio: Data? = (response?.mimeType ?? "").hasPrefix("audio/") ? data : (json?["audio_base64"] as? String).flatMap { Data(base64Encoded: $0) }
+                if let audio = audio, !audio.isEmpty {
                     do {
                         guard let root = self?.root else { return }
                         let folder = root.appendingPathComponent("assets", isDirectory: true)
                         try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
-                        let file = folder.appendingPathComponent(UUID().uuidString + "-voice.mp3")
-                        try data.write(to: file, options: .atomic)
-                        result["status"] = "completed"; result["path"] = file.path; result["name"] = file.lastPathComponent
-                        result["message"] = "Đã tạo audio. Hãy nghe thử rồi duyệt."
+                        let file = folder.appendingPathComponent(UUID().uuidString + (kind == "music" ? "-music.mp3" : "-voice.mp3"))
+                        try audio.write(to: file, options: .atomic)
+                        let words = Self.words(alignment: (json?["alignment"] ?? json?["normalized_alignment"]) as? [String: Any], skip: skip)
+                        Self.saveWords(words, beside: file)
+                        result["status"] = "completed"; result["path"] = file.path; result["name"] = file.lastPathComponent; result["words"] = words.count
+                        result["message"] = kind == "music" ? "Đã tạo nhạc nền." : "Đã tạo audio. Hãy nghe thử rồi duyệt."
                     } catch { result["message"] = "Đã nhận audio nhưng không lưu được trên máy. Kiểm tra dung lượng trước khi tạo lại." }
                 } else { result["message"] = "ElevenLabs không trả về audio hợp lệ. Kiểm tra lịch sử dịch vụ trước khi tạo lại." }
             } else if let data = data, let json = try? JSONSerialization.jsonObject(with: data) {
@@ -156,6 +212,7 @@ final class ElevenLabsTTS: NSObject, URLSessionTaskDelegate {
                 self.onUpdate?(result)
             }
         }
+        task = session.dataTask(with: makeRequest(path), completionHandler: handle)
         task?.resume()
     }
     func urlSession(_ session: URLSession, task: URLSessionTask, willPerformHTTPRedirection response: HTTPURLResponse, newRequest request: URLRequest, completionHandler: @escaping (URLRequest?) -> Void) { completionHandler(nil) }

@@ -1,0 +1,17 @@
+{
+  "name": "su-studio-map-scenes",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "description": "Map scenes for Sử Studio, rendered with Remotion.",
+  "dependencies": {
+    "@remotion/bundler": "4.0.539",
+    "@remotion/cli": "4.0.539",
+    "@remotion/renderer": "4.0.539",
+    "@turf/turf": "7.4.0",
+    "maplibre-gl": "6.16.0",
+    "react": "19.2.9",
+    "react-dom": "19.2.9",
+    "remotion": "4.0.539"
+  }
+}
