@@ -3,6 +3,16 @@
 // Newest first; the date is filled when the version is released.
 const appChangelog=
 [
+ {"version":"0.14.13","date":"2026-11-15","title":"Cảnh bản đồ Remotion, phụ đề từng chữ, nhạc nền và ảnh động","items":[
+  "Cảnh bản đồ động bằng Remotion: viết mô tả (trận nào, các phe, diễn biến), AI tra cứu địa danh và tự lập kịch bản; app dựng clip 16:9 hoặc 9:16 có mũi tên hành quân cong mượt, mũi tên rút lui nét đứt, tàu chạy theo hải trình, điểm giao tranh, tiêu đề và chú giải.",
+  "Bản đồ có địa hình đổ bóng và màu theo độ cao kiểu bản đồ cổ, tự căn khung theo nội dung, máy quay đẩy vào đúng lúc diễn biến chính, nhãn tự né nhau. Xem trước một khung hình trước khi dựng.",
+  "Cài đặt & kết nối → Remotion: app tự kiểm tra Node.js, gói Remotion và trình duyệt render; thiếu thì bấm cài, không cần quyền quản trị. Remotion miễn phí cho cá nhân và công ty tối đa 3 người.",
+  "Phụ đề từng chữ kiểu TikTok: chữ đang đọc sáng màu vàng, khớp mốc thời gian ElevenLabs gửi kèm giọng đọc tạo từ bản này; chọn kiểu phụ đề trong timeline.",
+  "Nhạc nền cho timeline: nhập file nhạc hoặc soạn nhạc không lời bằng ElevenLabs; nhạc tự lặp, mở/kết bằng fade và tự hạ nhỏ khi có lời kể.",
+  "Ảnh động miễn phí: biến ảnh của cảnh thành clip có máy quay chuyển động (đẩy vào, kéo ra, lia, nâng máy) và lớp phủ bụi, tàn lửa, khói sương, mưa; làm từng cảnh hoặc cho mọi cảnh chưa có clip.",
+  "Ước tính credit PlenX trước khi tạo ảnh/clip hàng loạt, theo bảng giá thật của model đang chọn.",
+  "Xuất MP4 xong app tự kiểm tra kích thước, thời lượng, tiếng và đoạn đen, rồi báo ngay."
+ ]},
  {"version":"0.14.12","date":"2026-11-15","title":"Phong cách người que và lỗi PlenX rõ ràng hơn","items":[
   "Chọn phong cách hình cho từng dự án ngay khi tạo video mới, hoặc đổi trong panel Định hướng prompt ảnh & video: Phim tài liệu điện ảnh hoặc 5 kiểu người que (Hoạt hình lịch sử, Kể chuyện ấm áp, Tiền sử hài hước, Tối giản nền đen, Tối giản nền trắng).",
   "Phong cách người que: app tự thêm mô tả nét vẽ cố định vào mọi prompt ảnh, ảnh góc máy, ảnh nhân vật chuẩn và video gửi PlenX để nhân vật đồng bộ giữa các cảnh; AI viết storyboard theo đúng phong cách, có hồ sơ nhân vật.",
