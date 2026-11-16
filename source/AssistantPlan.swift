@@ -279,7 +279,8 @@ enum AssistantPlan {
         if stage == "map_plan" { return looksLikeMapPlan(result["document"] as? String ?? "") }
         if stage == "blender_script" { return looksLikeScript(result["document"] as? String ?? "") }
         if stage == "short_cut" { return !scenes.isEmpty && options.count == scenes.count && scenes.allSatisfy { ($0["chapter"] as? String ?? "").contains("|") && !($0["voice"] as? String ?? "").isEmpty } }
-        if stage == "audio_tags" { return !scenes.isEmpty && scenes.allSatisfy { !($0["voice"] as? String ?? "").isEmpty } }
+        // Per-scene problems are handled in the app (that scene is skipped); here only a usable list is required.
+        if stage == "audio_tags" { return scenes.contains { !($0["voice"] as? String ?? "").trimmingCharacters(in: .whitespacesAndNewlines).isEmpty } }
         if stage == "ideas" { return options.count >= 3 && Set(options.compactMap { $0["id"] as? String }).count == options.count }
         if stage == "storyboard" { return !scenes.isEmpty && scenes.allSatisfy { scene in ["time", "voice", "image", "video"].allSatisfy { !(scene[$0] as? String ?? "").trimmingCharacters(in: .whitespacesAndNewlines).isEmpty } } }
         return !(result["document"] as? String ?? "").isEmpty

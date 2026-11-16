@@ -551,4 +551,19 @@ renderMapScene('s1',false);rr=sent.at(-1);window.nativeRemotion({status:'complet
 const mc=selectedSceneAsset(ms,'video');if(mc?.provider!=='remotion-map'||ms.approvals.video||!mc.mapPlan.includes('103.3'))throw Error('map clip saved and needs approval');
 renderMapScene('s1',false);rr=sent.at(-1);window.nativeRemotion({status:'error',requestId:rr.body.requestId,message:'Chưa dựng được'});if(mapPending||mapToasts.at(-1)!=='Chưa dựng được')throw Error('render error');
 """)
-print("UI scripts parse; Remotion map scenes, credit estimates, motion stills, background music, karaoke caption option, stickman styles, sleep/wake recovery, Blender stage, changelog, backup and restore, Short format, framing, captions, short cuts and series, dashboard, overview, TTS, references, settings, escaping and workflow gate passed")
+c.evaluateScript("""
+// Auto-tagging is per scene: one empty, missing or invalid scene never blocks the others.
+sent=[];let tagToasts=[];toast=function(m){tagToasts.push(m)};confirm=function(){return true};ttsPending=null;
+const tp={id:'tp',title:'T',guide:{steps:{},brief:{}},scenes:[{id:'t1',voice:'Câu một.',approvals:{},assets:{}},{id:'t2',voice:'   ',approvals:{},assets:{}},{id:'t3',voice:'Câu ba.',approvals:{},assets:{}},{id:'t4',voice:'Câu bốn.',approvals:{},assets:{}},{id:'t5',voice:'Câu năm.',approvals:{},assets:{}}]};
+state.projects=[tp];selected='tp';suggestAudioTags();const tagReq=sent.at(-1);
+if(tagReq.body.context.targetScenes.map(s=>s.id).join()!=='t1,t3,t4,t5')throw Error('scenes without narration are not sent');
+window.nativeAssistant({projectId:'tp',requestId:tagReq.body.requestId,stage:'audio_tags',status:'completed',result:{scenes:[{chapter:'t4',voice:'[sad] Câu bốn đã sửa.'},{chapter:'t1',voice:'[calm] Câu một.'},{chapter:'t5',voice:'[explosion] [whispers] Câu năm.'}]}});
+const s1=tp.scenes[0],s3=tp.scenes[2],s4=tp.scenes[3],s5=tp.scenes[4];
+if(s1.audioTagDraft?.text!=='[calm] Câu một.'||s5.audioTagDraft?.text!=='[whispers] Câu năm.'||s3.audioTagDraft||s4.audioTagDraft)throw Error('valid scenes get drafts by id; unknown tag stripped; missing/changed scenes skipped');
+if(tp.audioTagJob.status!=='completed'||!tp.audioTagJob.message.includes('2/4')||!tp.audioTagJob.message.includes('cảnh 3')||!tp.audioTagJob.message.includes('cảnh 4'))throw Error('message names skipped scenes: '+tp.audioTagJob.message);
+s3.audioTagDraft={text:'[calm] Câu ba khác.',source:s3.voice};applyAudioTags();
+if(!ttsScript(s1).includes('[calm]')||!ttsScript(s5).includes('[whispers]')||ttsScript(s3)!==s3.voice)throw Error('apply all skips the bad draft and applies the rest');
+if(cleanAudioTags('[boom] Xin [calm] chào')!=='Xin [calm] chào')throw Error('clean tags');
+tp.scenes.forEach(s=>s.voice=' ');suggestAudioTags();if(!tagToasts.at(-1).includes('chưa có lời kể'))throw Error('nothing to tag');
+""")
+print("UI scripts parse; per-scene auto-tags, Remotion map scenes, credit estimates, motion stills, background music, karaoke caption option, stickman styles, sleep/wake recovery, Blender stage, changelog, backup and restore, Short format, framing, captions, short cuts and series, dashboard, overview, TTS, references, settings, escaping and workflow gate passed")

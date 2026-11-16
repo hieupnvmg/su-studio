@@ -36,4 +36,6 @@ precondition(mapPrompt.contains("[kinh độ, vĩ độ]") && mapPrompt.contains
 var mapResult = ok; mapResult["document"] = "{\"start\":{\"center\":[103.0,21.4],\"zoom\":8},\"places\":[]}"
 precondition(AssistantPlan.isValid(mapResult,stage:"map_plan"))
 for bad in ["Bản đồ gồm Điện Biên Phủ…", "{\"start\":{\"zoom\":8}}", "{\"start\":{\"center\":[103],\"zoom\":8}}", "[]"] { mapResult["document"] = bad; precondition(!AssistantPlan.isValid(mapResult,stage:"map_plan"), bad) }
-print("Assistant plan passed: map_plan stage, stickman style direction, researched scene context, model suggestions, Blender instructions and prose rejection, blender_script stage, Short storyboard profile, 9:16 prompts, script mode, short_cut stage and validation")
+var tagged = ok; tagged["scenes"] = [["time":"","chapter":"a","voice":"[calm] x","image":"","video":"","notes":""],["time":"","chapter":"b","voice":"","image":"","video":"","notes":""]]
+precondition(AssistantPlan.isValid(tagged,stage:"audio_tags"),"one empty scene does not invalidate the rest"); tagged["scenes"] = [["time":"","chapter":"b","voice":" ","image":"","video":"","notes":""]]; precondition(!AssistantPlan.isValid(tagged,stage:"audio_tags"))
+print("Assistant plan passed: audio_tags per scene, map_plan stage, stickman style direction, researched scene context, model suggestions, Blender instructions and prose rejection, blender_script stage, Short storyboard profile, 9:16 prompts, script mode, short_cut stage and validation")
