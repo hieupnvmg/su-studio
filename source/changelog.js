@@ -3,6 +3,10 @@
 // Newest first; the date is filled when the version is released.
 const appChangelog=
 [
+ {"version":"0.14.14","date":"2026-11-16","title":"Sửa gợi ý audio tag tự động","items":[
+  "Sửa lỗi: một cảnh không có lời kể, bị AI bỏ sót hoặc có tag lạ làm cả lượt gợi ý tag tự động không áp dụng được. Giờ mỗi cảnh xử lý riêng: cảnh lỗi được bỏ qua và nêu rõ số cảnh, các cảnh khác vẫn nhận gợi ý.",
+  "Tag ngoài danh sách hỗ trợ được tự gỡ, giữ các tag hợp lệ trong câu. Nút Áp dụng tất cả bỏ qua bản nháp không còn khớp lời gốc thay vì chặn toàn bộ."
+ ]},
  {"version":"0.14.13","date":"2026-11-15","title":"Cảnh bản đồ Remotion, phụ đề từng chữ, nhạc nền và ảnh động","items":[
   "Cảnh bản đồ động bằng Remotion: viết mô tả (trận nào, các phe, diễn biến), AI tra cứu địa danh và tự lập kịch bản; app dựng clip 16:9 hoặc 9:16 có mũi tên hành quân cong mượt, mũi tên rút lui nét đứt, tàu chạy theo hải trình, điểm giao tranh, tiêu đề và chú giải.",
   "Bản đồ có địa hình đổ bóng và màu theo độ cao kiểu bản đồ cổ, tự căn khung theo nội dung, máy quay đẩy vào đúng lúc diễn biến chính, nhãn tự né nhau. Xem trước một khung hình trước khi dựng.",
