@@ -566,4 +566,18 @@ if(!ttsScript(s1).includes('[calm]')||!ttsScript(s5).includes('[whispers]')||tts
 if(cleanAudioTags('[boom] Xin [calm] chào')!=='Xin [calm] chào')throw Error('clean tags');
 tp.scenes.forEach(s=>s.voice=' ');suggestAudioTags();if(!tagToasts.at(-1).includes('chưa có lời kể'))throw Error('nothing to tag');
 """)
-print("UI scripts parse; per-scene auto-tags, Remotion map scenes, credit estimates, motion stills, background music, karaoke caption option, stickman styles, sleep/wake recovery, Blender stage, changelog, backup and restore, Short format, framing, captions, short cuts and series, dashboard, overview, TTS, references, settings, escaping and workflow gate passed")
+c.evaluateScript("""
+// Scene times never block approval: broken times are noted and renumbered when the storyboard is approved.
+const tsc=(time,voice='một hai ba bốn năm sáu bảy tám chín mười')=>({time,chapter:'c',voice,image:'i',video:'v',notes:''});
+const tsP={id:'ts',title:'T',scenes:[],guide:{brief:{duration:10},steps:{}}};state.projects=[tsP];selected='ts';
+const broken={scenes:[tsc('11:27–11:30'),tsc('11:30–11:33'),tsc('11:39–11:66'),tsc('11:39–hết')]};
+if(storyboardIssue(tsP,broken)!=='')throw Error('times do not block approval');
+if(!storyboardTimeNote(tsP,broken).includes('1, 3, 4'))throw Error('note names scenes with broken times: '+storyboardTimeNote(tsP,broken));
+if(storyboardIssue(tsP,{scenes:[{...tsc('0:00–0:05'),image:''}]})!=='Cảnh 1 còn thiếu lời dẫn hoặc prompt.'||storyboardIssue(tsP,{scenes:[]})!=='Storyboard chưa có cảnh.')throw Error('missing content still blocks');
+if(!normalizeStoryboardTimes(broken)||broken.scenes.map(s=>s.time).join(' | ')!=='0:00–0:03 | 0:03–0:06 | 0:06–0:33 | 0:33–0:37')throw Error('renumbered continuously: '+broken.scenes.map(s=>s.time).join(' | '));
+if(storyboardTimeProblems(broken).bad.length||normalizeStoryboardTimes(broken))throw Error('normalized times are clean and left alone');
+const good={scenes:[tsc('0:00–5:00'),tsc('5:00–10:00')]};if(storyboardTimeNote(tsP,good)!==''||normalizeStoryboardTimes(good))throw Error('good storyboard untouched');
+if(!storyboardTimeNote(tsP,{scenes:[tsc('0:00–3:00')]}).includes('khác 10 phút'))throw Error('length mismatch is only a note');
+if(sceneTimeSpan('11:39–11:66').finish!==726||sceneTimeSpan('1:02:03')!==null)throw Error('time parsing');
+""")
+print("UI scripts parse; non-blocking scene times, per-scene auto-tags, Remotion map scenes, credit estimates, motion stills, background music, karaoke caption option, stickman styles, sleep/wake recovery, Blender stage, changelog, backup and restore, Short format, framing, captions, short cuts and series, dashboard, overview, TTS, references, settings, escaping and workflow gate passed")
