@@ -3,7 +3,8 @@
 // Newest first; the date is filled when the version is released.
 const appChangelog=
 [
- {"version":"0.14.14","date":"2026-11-16","title":"Sửa gợi ý audio tag tự động","items":[
+ {"version":"0.14.14","date":"2026-11-27","title":"Duyệt storyboard không bị kẹt vì mốc thời gian, sửa audio tag tự động","items":[
+  "Sửa lỗi: storyboard không duyệt được khi một cảnh có mốc thời gian sai dạng (ví dụ 11:39–11:66, 11:39–hết), đứt quãng hoặc tổng thời lượng lệch. Giờ chỉ hiện ghi chú; khi duyệt app tự đánh lại mốc liền mạch theo thứ tự cảnh. Độ dài video vẫn theo giọng đọc thực tế.",
   "Sửa lỗi: một cảnh không có lời kể, bị AI bỏ sót hoặc có tag lạ làm cả lượt gợi ý tag tự động không áp dụng được. Giờ mỗi cảnh xử lý riêng: cảnh lỗi được bỏ qua và nêu rõ số cảnh, các cảnh khác vẫn nhận gợi ý.",
   "Tag ngoài danh sách hỗ trợ được tự gỡ, giữ các tag hợp lệ trong câu. Nút Áp dụng tất cả bỏ qua bản nháp không còn khớp lời gốc thay vì chặn toàn bộ."
  ]},
